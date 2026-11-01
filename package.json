@@ -1,0 +1,15 @@
+{
+  "name": "haggle-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI haggling agent for small sellers: the AI negotiates the price, code enforces the seller's limits, PayPal collects the payment.",
+  "license": "MIT",
+  "main": "src/server.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js",
+    "eval": "node scripts/eval.js"
+  }
+}

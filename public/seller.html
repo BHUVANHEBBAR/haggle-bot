@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HaggleBot: seller dashboard</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"></header>
+<main>
+  <h1>Seller dashboard</h1>
+  <div id="login" class="card" style="max-width:420px">
+    <form id="loginForm" class="row">
+      <label class="sr" for="key">Seller key</label>
+      <input id="key" type="password" placeholder="Seller key (SELLER_KEY in .env)" autocomplete="current-password" required>
+      <button>Open</button>
+    </form>
+    <div id="loginErr" class="fine" style="color:var(--bad);margin-top:8px"></div>
+  </div>
+  <div id="dash" hidden>
+    <p class="lead">Your rules are enforced in code. The AI never sees your floor price and cannot go below it.</p>
+    <div class="tiles" id="tiles"></div>
+    <div class="card" id="evalCard" style="margin-bottom:22px"></div>
+
+    <div class="charts">
+      <div class="card"><strong>Deal status</strong><div id="chartStatus" class="chart-box"></div></div>
+      <div class="card"><strong>Average discount by product</strong><div id="chartDiscount" class="chart-box"></div></div>
+    </div>
+
+    <h2>Deals</h2>
+    <div class="card">
+      <div class="row spread" style="margin-bottom:10px">
+        <label class="sr" for="dealFilter">Filter deals</label>
+        <input id="dealFilter" type="search" placeholder="Filter deals (product, status)..." style="max-width:340px;width:100%">
+      </div>
+      <div id="dealsGrid"></div>
+      <div id="dealsEmpty" class="fine" hidden>No deals yet. Negotiate one in the shop.</div>
+      <div class="scroll"><table id="deals" hidden></table></div>
+    </div>
+
+    <h2>Your rules (private)</h2>
+    <div class="card scroll"><table id="products"></table>
+      <p class="fine">Floor = the highest of: cost plus minimum margin, or list price minus max discount. Low stock tightens it further.</p></div>
+
+    <h2>Guardrail and payment log</h2>
+    <div class="card"><ul class="events" id="events"></ul></div>
+  </div>
+</main>
+<script src="/vendor/ag-grid/ag-grid-community.min.js"></script>
+<script src="/vendor/ag-charts/ag-charts-community.min.js"></script>
+<script src="/common.js"></script>
+<script>
+header('seller');
+let key = '';
+try { key = sessionStorage.getItem('sk') || ''; } catch { /* storage may be unavailable */ }
+const H = () => ({ 'x-seller-key': key });
+
+async function load() {
+  const d = await api('/api/seller/dashboard', { headers: H() });
+  $('#login').hidden = true; $('#dash').hidden = false;
+  const s = d.stats;
+  const tile = (v, l, ic) => el('div', { class: 'tile' }, el('div', { class: 'ico' }, icon(ic)), el('div', {}, el('div', { class: 'v num' }, v), el('div', { class: 'l' }, l)));
+  $('#tiles').replaceChildren(
+    tile(String(s.dealsPaid), 'Deals paid', 'check'), tile(usd(s.revenueCents), 'Revenue', 'coin'),
+    tile(`${s.avgDiscountPct}%`, 'Average discount given', 'percent'), tile(`${s.marginPct}%`, 'Margin kept', 'chart'),
+    tile(String(s.belowFloorRefused), 'Below-limit offers refused', 'shield'), tile(String(s.priceClamped), 'AI prices corrected', 'sliders'),
+    tile(String(s.injectionsBlocked), 'Manipulation attempts blocked', 'ban'), tile(`${s.estMinutesSaved} min`, 'Est. chat time saved (0.75 min per message)', 'clock'));
+
+  renderEval();
+  renderDeals(d.deals);
+  renderCharts(d.deals);
+
+  $('#products').replaceChildren(
+    el('tr', {}, ['Product', 'List $', 'Cost $', 'Min margin %', 'Max discount %', 'Stock', 'Floor', ''].map((t) => el('th', {}, t))),
+    ...d.products.map((p) => {
+      const f = {}; const inp = (k, v, w = 80) => (f[k] = el('input', { type: 'number', step: 'any', value: v, style: `width:${w}px`, 'aria-label': `${p.name} ${k}` }));
+      return el('tr', {}, el('td', {}, p.name), el('td', {}, inp('listPrice', p.listCents / 100)), el('td', {}, inp('costPrice', p.costCents / 100)),
+        el('td', {}, inp('minMarginPct', p.minMarginPct)), el('td', {}, inp('maxDiscountPct', p.maxDiscountPct)), el('td', {}, inp('stock', p.stock, 64)),
+        el('td', {}, usd(p.floorCents)),
+        el('td', {}, el('button', { class: 'ghost', onclick: async () => {
+          const body = Object.fromEntries(Object.entries(f).map(([k, n]) => [k, n.value]));
+          try { await api(`/api/seller/products/${p.id}`, { method: 'PUT', headers: H(), body }); await load(); } catch (e) { alert(e.message); }
+        } }, 'Save')));
+    }));
+
+  $('#events').replaceChildren(...d.events.map((e) => el('li', {}, `${new Date(e.ts).toLocaleTimeString()}  ${label(e)}`)));
+}
+// ---------- deals: AG Grid Community (plain table fallback if the library is missing) ----------
+const dealActions = (x) => el('div', { class: 'row' },
+  x.status === 'authorized' ? [el('button', { onclick: () => act(x.id, 'capture') }, 'Accept job (capture)'), el('button', { class: 'ghost', onclick: () => act(x.id, 'void') }, 'Decline (release hold)')] : null,
+  x.status === 'captured' ? el('button', { class: 'ghost', onclick: () => act(x.id, 'refund') }, 'Refund') : null);
+let gridApi = null;
+function renderDeals(deals) {
+  $('#dealsEmpty').hidden = deals.length > 0;
+  $('#dealsGrid').hidden = deals.length === 0 || !window.agGrid;
+  $('#dealFilter').hidden = deals.length === 0 || !window.agGrid;
+  if (!window.agGrid) { // fallback: the original table
+    const thead = el('tr', {}, ['Product', 'Price', 'Your floor', 'Status', 'Actions'].map((t) => el('th', {}, t)));
+    $('#deals').hidden = deals.length === 0;
+    $('#deals').replaceChildren(thead, ...deals.map((x) => el('tr', {}, el('td', {}, x.productName, x.qty > 1 ? ` x${x.qty}` : ''),
+      el('td', {}, usd(x.totalCents), el('div', { class: 'fine' }, `list ${usd(x.listTotalCents)}`)), el('td', {}, usd(x.floorTotalCents)),
+      el('td', {}, statusPill(x.status)), el('td', {}, dealActions(x)))));
+    return;
+  }
+  if (gridApi) { gridApi.setGridOption('rowData', deals); return; }
+  gridApi = agGrid.createGrid($('#dealsGrid'), {
+    theme: agGrid.themeQuartz.withParams({ fontFamily: 'inherit', backgroundColor: 'var(--card)', foregroundColor: 'var(--ink)', headerBackgroundColor: 'var(--bg)', borderColor: 'var(--line)', accentColor: '#2563eb', rowHoverColor: 'var(--brand-soft)' }),
+    rowData: deals, getRowId: (p) => p.data.id, domLayout: 'autoHeight', rowHeight: 64, headerHeight: 42,
+    pagination: true, paginationPageSize: 8, paginationPageSizeSelector: false, suppressCellFocus: true,
+    defaultColDef: { sortable: true, filter: true, resizable: true },
+    columnDefs: [
+      { headerName: 'Product', flex: 2, minWidth: 190, valueGetter: (p) => p.data.productName + (p.data.qty > 1 ? ` x${p.data.qty}` : '') },
+      { headerName: 'Price', field: 'totalCents', width: 130, cellRenderer: (p) => el('div', {}, usd(p.data.totalCents), el('div', { class: 'fine' }, `list ${usd(p.data.listTotalCents)}`)) },
+      { headerName: 'Your floor', field: 'floorTotalCents', width: 130, valueFormatter: (p) => usd(p.value) },
+      { headerName: 'Status', field: 'status', width: 140, cellRenderer: (p) => statusPill(p.value) },
+      { headerName: 'Actions', colId: 'actions', flex: 2, minWidth: 350, sortable: false, filter: false, cellRenderer: (p) => dealActions(p.data) },
+    ],
+  });
+  $('#dealFilter').addEventListener('input', (e) => gridApi.setGridOption('quickFilterText', e.target.value));
+}
+
+// ---------- charts: AG Charts Community ----------
+const chartTheme = () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'ag-default-dark' : 'ag-default');
+const charts = {};
+const STATUS_COLORS = { agreed: '#2563eb', order_created: '#2563eb', authorized: '#d97706', captured: '#15803d', refunded: '#7c3aed', voided: '#64748b', expired: '#94a3b8' };
+function drawChart(id, options) {
+  if (!window.agCharts) { $(id).textContent = ''; return; }
+  const full = { container: $(id), background: { visible: false }, theme: chartTheme(), height: 240, ...options };
+  if (charts[id]) { try { charts[id].destroy(); } catch { /* ignore */ } }
+  charts[id] = agCharts.AgCharts.create(full);
+}
+function renderCharts(deals) {
+  const byStatus = {};
+  for (const x of deals) byStatus[x.status] = (byStatus[x.status] || 0) + 1;
+  drawChart('#chartStatus', {
+    data: Object.entries(byStatus).map(([status, count]) => ({ status, count })),
+    series: [{ type: 'donut', calloutLabelKey: 'status', angleKey: 'count', innerRadiusRatio: 0.6,
+      itemStyler: (p) => ({ fill: STATUS_COLORS[p.datum.status] || '#64748b' }) }],
+    legend: { position: 'bottom' },
+  });
+  const byProduct = {};
+  for (const x of deals) { if (!x.listTotalCents) continue; (byProduct[x.productName] ||= []).push((1 - x.totalCents / x.listTotalCents) * 100); }
+  drawChart('#chartDiscount', {
+    data: Object.entries(byProduct).map(([product, v]) => ({ product: product.split(' ').slice(0, 2).join(' '), discount: Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 })),
+    series: [{ type: 'bar', xKey: 'product', yKey: 'discount', yName: 'Average discount %', fill: '#2563eb' }],
+    axes: { x: { type: 'category', position: 'bottom' }, y: { type: 'number', position: 'left', title: { text: '% off list' } } },
+    legend: { enabled: false },
+  });
+}
+
+// ---------- safety check: hostile buyers + a hostile AI against the real guardrails ----------
+async function renderEval(running) {
+  const card = $('#evalCard');
+  let report = null;
+  try { report = (await api('/api/seller/eval', { headers: H() })).report; } catch { /* ignore */ }
+  const btn = el('button', { class: 'ghost', id: 'runEval', onclick: async () => {
+    btn.disabled = true; btn.textContent = 'Running...';
+    try { const r = await api('/api/seller/eval/run', { method: 'POST', headers: H(), body: { n: 400 } }); await renderEval(r.report); }
+    catch (e) { btn.disabled = false; btn.textContent = 'Run safety check'; card.append(el('div', { class: 'notice bad', style: 'margin-top:10px' }, e.message)); }
+  } }, report ? 'Run again' : 'Run safety check');
+  if (!report) {
+    card.replaceChildren(el('div', { class: 'row spread' }, el('div', {},
+      el('strong', {}, 'Safety check'),
+      el('div', { class: 'fine' }, 'Throws hundreds of hostile buyers and a deliberately misbehaving AI at the guardrails. Not run yet.')), btn));
+    return;
+  }
+  const iv = report.interventions;
+  card.replaceChildren(el('div', { class: 'row spread' },
+    el('div', {},
+      el('div', { class: 'row' }, el('span', { class: `pill ${report.passed ? 'captured' : 'refunded'}` }, report.passed ? 'passed' : 'FAILED'),
+        el('strong', {}, `${report.negotiations} simulated negotiations, ${report.violationCount} rule violations`)),
+      el('div', { class: 'fine' }, `${report.turns} buyer messages, ${report.dealsClosed} deals closed, none below your floor. Guardrails stepped in ${iv.priceClamped} times on prices, ${iv.messageReplaced} on AI wording, blocked ${iv.injectionBlocked} manipulation attempts. Run ${new Date(report.generatedAt).toLocaleString()}.`)),
+    btn));
+}
+function label(e) {
+  const m = {
+    injection_blocked: () => `Manipulation attempt ignored: "${e.text}"`,
+    below_floor_refused: () => `Offer of ${usd(e.offer)} refused (below your limit)`,
+    price_clamped: () => `AI proposed ${usd(e.aiProposed)}; guardrail used ${usd(e.used)}`,
+    payment_ok: () => `Payment OK (${e.status}) for deal ${e.dealId}`,
+    payment_declined: () => `Payment declined (${e.issue}) for deal ${e.dealId}. PayPal debug id: ${e.debugId || 'n/a'}`,
+    webhook_processed: () => `Webhook verified and applied: ${e.eventType}`,
+    webhook_duplicate: () => `Duplicate webhook ignored: ${e.eventType}`,
+    webhook_rejected: () => 'Webhook rejected: signature check failed',
+    seller_captured: () => `You captured the held payment for deal ${e.dealId}`,
+    seller_voided: () => `You released the payment hold for deal ${e.dealId}`,
+    seller_refunded: () => `You refunded deal ${e.dealId}`,
+    paypal_error: () => `PayPal error in ${e.op}: ${e.issue} (debug id ${e.debugId || 'n/a'})`,
+    rules_changed: () => `Rules changed for ${e.productId}`,
+  };
+  return (m[e.type] || (() => e.type))();
+}
+async function act(id, what) {
+  try { await api(`/api/seller/deals/${id}/${what}`, { method: 'POST', headers: H() }); await load(); } catch (e) { alert(e.message); }
+}
+$('#loginForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); key = $('#key').value;
+  try { await load(); try { sessionStorage.setItem('sk', key); } catch { /* ignore */ } }
+  catch (e) { $('#loginErr').textContent = e.status === 401 ? 'Wrong key.' : e.message; }
+});
+if (key) load().catch(() => {});
+setInterval(() => { if (!$('#dash').hidden && document.activeElement?.tagName !== 'INPUT') load().catch(() => {}); }, 8000);
+</script>
+</body>
+</html>

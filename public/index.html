@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HaggleBot: negotiate the price, pay with PayPal</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"></header>
+<main>
+  <div id="notice" role="status"></div>
+  <section id="shop">
+    <div class="hero">
+      <h1>Make an offer. Our AI does the haggling.</h1>
+      <p class="lead">Chat with the shop's assistant, strike a deal, then check out at the price you agreed.</p>
+      <ul class="trust" id="trust"></ul>
+    </div>
+    <div class="grid" id="products"></div>
+  </section>
+
+  <section id="room" hidden>
+    <div class="roombar">
+      <button class="ghost" id="back">&larr; All products</button>
+      <div class="pill-price" id="curPill">Current price <b class="num" id="curPrice">-</b></div>
+      <div class="progress" id="progress"><span id="roundText">Offer round 0 of 6</span><span class="bar" id="roundBar"></span></div>
+      <div class="fine" id="roomInfo"></div>
+    </div>
+    <div class="card chat">
+      <div class="msgs" id="msgs" aria-live="polite"></div>
+      <div id="dealBox"></div>
+      <form class="composer" id="form" autocomplete="off">
+        <label class="sr" for="text">Your message or offer</label>
+        <input id="text" maxlength="300" placeholder="Try: I can pay $40" required>
+        <button id="send">Send</button>
+      </form>
+    </div>
+  </section>
+</main>
+<script src="/vendor/confetti/confetti.browser.js"></script>
+<script src="/common.js"></script>
+<script>
+header('shop');
+const MAX_ROUNDS = 6;
+let session = null, product = null, busy = false, holdTimer = null;
+
+$('#trust').replaceChildren(
+  ...[['lock', 'Price held on the server'], ['shield', 'Seller limits enforced in code'], ['flask', 'Sandbox payments only']]
+    .map(([i, t]) => el('li', {}, icon(i), t)));
+
+function addMsg(role, text, extra) {
+  const m = el('div', { class: `msg ${role}` }, text, extra || null);
+  $('#msgs').append(m); $('#msgs').scrollTop = 1e9; return m;
+}
+function showNotice(kind, text) { $('#notice').replaceChildren(text ? el('div', { class: `notice ${kind}` }, text) : ''); }
+function setPrice(cents) { if (cents != null) $('#curPrice').textContent = usd(cents); }
+function setRound(n) {
+  const r = Math.min(Math.max(n || 0, 0), MAX_ROUNDS);
+  $('#roundText').textContent = `Offer round ${r} of ${MAX_ROUNDS}`;
+  $('#roundBar').replaceChildren(...Array.from({ length: MAX_ROUNDS }, (_, i) => el('i', { class: i < r ? 'on' : '' })));
+}
+
+async function loadProducts() {
+  const { products } = await api('/api/products');
+  $('#products').replaceChildren(...products.map((p) => el('article', { class: 'card pcard' },
+    el('div', { class: 'emoji', 'aria-hidden': 'true' }, p.emoji),
+    el('h3', {}, p.name),
+    el('p', {}, p.description),
+    el('div', { class: 'row spread' },
+      el('div', {}, el('div', { class: 'price num' }, usd(p.listCents)), p.stock ? el('span', { class: 'tag low' }, `Only ${p.stock} left`) : null,
+        p.payMode === 'authorize' ? el('div', { class: 'fine' }, 'Payment held until the designer accepts') : null),
+      p.inStock ? el('button', { onclick: () => openRoom(p) }, 'Haggle') : el('span', { class: 'tag' }, 'Sold out')))));
+}
+
+async function openRoom(p, qty) {
+  showNotice('', '');
+  product = p;
+  const s = await api('/api/chat/start', { method: 'POST', body: { productId: p.id, qty } });
+  session = s;
+  $('#shop').hidden = true; $('#room').hidden = false;
+  $('#roomInfo').textContent = p.name;
+  setPrice(p.listCents); setRound(0);
+  $('#msgs').replaceChildren(); $('#dealBox').replaceChildren();
+  addMsg('seller', s.message);
+  $('#text').disabled = false; $('#send').disabled = false; $('#text').focus();
+}
+
+function fmtLeft(ms) { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+function showDeal(deal, p) {
+  clearInterval(holdTimer);
+  const listTotal = deal.listTotalCents ?? p.listCents * deal.qty;
+  const saved = listTotal - deal.totalCents;
+  const hold = el('span', { class: 'hold num', id: 'hold' });
+  const tick = () => {
+    const left = Date.parse(deal.expiresAt) - Date.now();
+    hold.replaceChildren(icon('clock', 16), left > 0 ? `Price held for ${fmtLeft(left)}` : 'Price hold expired. Start a new chat.');
+    if (left <= 0) { clearInterval(holdTimer); const b = $('#pay'); if (b) b.disabled = true; }
+  };
+  const box = el('div', { class: 'deal' },
+    el('div', { class: 'kicker' }, icon('check', 16), 'Deal closed'),
+    el('div', { class: 'big num' }, usd(deal.totalCents),
+      listTotal > deal.totalCents ? el('span', { class: 'price-old num', style: 'font-size:.45em;margin-left:10px' }, usd(listTotal)) : null,
+      deal.qty > 1 ? el('span', { class: 'fine' }, ` (${deal.qty} x ${usd(deal.unitCents)})`) : null),
+    el('div', { class: 'row', style: 'margin-top:4px' },
+      saved > 0 ? el('span', { class: 'save num' }, `You save ${usd(saved)}`) : null, hold),
+    el('div', { class: 'row' },
+      el('button', { id: 'pay', class: 'checkout', onclick: () => checkout(deal.id) }, 'Checkout with PayPal'),
+      el('span', { class: 'fine' }, p.payMode === 'authorize' ? 'Your payment is only held until the designer accepts the brief.' : 'Secure checkout with PayPal')));
+  $('#dealBox').replaceChildren(box);
+  tick(); holdTimer = setInterval(tick, 1000);
+}
+
+async function checkout(dealId) {
+  $('#pay') && ($('#pay').disabled = true);
+  try { const r = await api('/api/checkout', { method: 'POST', body: { dealId } }); location.href = r.approveUrl; }
+  catch (e) { showNotice('bad', e.message); $('#pay') && ($('#pay').disabled = false); }
+}
+
+$('#form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  if (busy) return;
+  const text = $('#text').value.trim(); if (!text) return;
+  busy = true; $('#send').disabled = true; $('#text').value = '';
+  addMsg('buyer', text);
+  const thinking = typingBubble();
+  $('#msgs').append(thinking); $('#msgs').scrollTop = 1e9;
+  try {
+    const r = await api('/api/chat/message', { method: 'POST', body: { sessionId: session.sessionId, text } });
+    thinking.className = 'msg seller'; thinking.removeAttribute('role'); thinking.removeAttribute('aria-label');
+    thinking.replaceChildren(r.message, chipsFor(r.guard, r.action), whoLabel(r.guard));
+    $('#msgs').scrollTop = 1e9;
+    setPrice(r.priceCents); setRound(r.round);
+    refreshBadge();
+    if (r.deal) { showDeal(r.deal, product); celebrate(); $('#text').disabled = true; }
+    else if (r.status !== 'open') { $('#text').disabled = true; addMsg('seller', 'This negotiation has ended.'); }
+    else {
+      $('#send').disabled = false;
+      if (r.action === 'counter') {
+        $('#dealBox').replaceChildren(el('div', { class: 'row', style: 'margin-top:8px' },
+          el('button', { class: 'ghost', onclick: () => { $('#text').value = `Deal, I'll take it at ${usd(r.priceCents)}`; $('#form').requestSubmit(); } }, `Accept ${usd(r.priceCents)}`)));
+      }
+    }
+  } catch (e) { thinking.className = 'msg seller'; thinking.textContent = e.message; $('#send').disabled = false; }
+  busy = false; $('#text').focus();
+});
+$('#back').addEventListener('click', () => { clearInterval(holdTimer); $('#room').hidden = true; $('#shop').hidden = false; loadProducts(); });
+
+async function handleReturn() {
+  const q = new URLSearchParams(location.search);
+  const id = q.get('deal'); if (!id) return;
+  const err = q.get('error');
+  history.replaceState({}, '', '/');
+  let deal = null;
+  try { deal = (await api(`/api/deals/${id}`)).deal; } catch { /* ignore */ }
+  if (err === 'declined') showNotice('bad', 'Your payment method was declined. Your negotiated price is still held, so you can try again.');
+  else if (err === 'cancelled') showNotice('info', 'Checkout cancelled. Your negotiated price is held for a few minutes.');
+  else if (err) showNotice('bad', 'Something went wrong with the payment. You have not been charged.');
+  else if (deal && deal.status === 'authorized') showNotice('ok', `Payment of ${usd(deal.totalCents)} is on hold for "${deal.productName}". It is charged only when the seller accepts. Order reference: ${deal.id}`);
+  else if (deal && ['captured'].includes(deal.status)) showNotice('ok', `Paid ${usd(deal.totalCents)} for "${deal.productName}". Thank you! Order reference: ${deal.id}`);
+  if (err && deal && ['agreed', 'order_created'].includes(deal.status)) {
+    $('#shop').hidden = true; $('#room').hidden = false;
+    $('#roomInfo').textContent = deal.productName;
+    setPrice(deal.unitCents); setRound(0); $('#progress').hidden = true;
+    addMsg('seller', 'Your deal is still available. Pay below when you are ready.');
+    showDeal(deal, { listCents: deal.listTotalCents / deal.qty, payMode: deal.payMode });
+    $('#form').hidden = true;
+  }
+}
+loadProducts().then(handleReturn);
+</script>
+</body>
+</html>

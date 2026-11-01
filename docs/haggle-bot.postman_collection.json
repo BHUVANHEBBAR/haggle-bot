@@ -1,0 +1,252 @@
+{
+  "info": {
+    "name": "HaggleBot agent negotiation API",
+    "description": "Structured offers/counters between a shopper agent and the shop agent, ending in a PayPal (sandbox) checkout that a human approves. Run the requests in order: the scripts store sessionId and dealId. Start the server with `node src/server.js`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "dealId",
+      "value": ""
+    },
+    {
+      "key": "offerCents",
+      "value": "3000"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Discover (descriptor)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('descriptor', () => pm.expect(pm.response.json().protocol).to.eql('haggle.v1'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/.well-known/negotiate.json",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            ".well-known",
+            "negotiate.json"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1. List products",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/v1/products",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "agent",
+            "v1",
+            "products"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Start session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const j = pm.response.json();",
+              "pm.collectionVariables.set('sessionId', j.session_id);",
+              "pm.test('session started', () => pm.expect(j.ask_cents).to.be.a('number'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/v1/sessions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "agent",
+            "v1",
+            "sessions"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"product_id\": \"tote\",\n  \"quantity\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "3. Make offer (repeat; raise toward the counter)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const j = pm.response.json();",
+              "if (j.status === 'counter') pm.collectionVariables.set('offerCents', String(j.price_cents));",
+              "if (j.deal) pm.collectionVariables.set('dealId', j.deal.deal_id);",
+              "pm.test('status is counter, accepted or walked_away', () => pm.expect(['counter', 'accepted', 'walked_away']).to.include(j.status));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/v1/sessions/{{sessionId}}/offers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "agent",
+            "v1",
+            "sessions",
+            "{{sessionId}}",
+            "offers"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"unit_price_cents\": {{offerCents}},\n  \"note\": \"Optional free text for the seller agent\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "4. Deal status",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/v1/deals/{{dealId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "agent",
+            "v1",
+            "deals",
+            "{{dealId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Checkout (returns the link a human approves)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('approval link', () => pm.expect(pm.response.json().approve_url).to.be.a('string'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/agent/v1/deals/{{dealId}}/checkout",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "agent",
+            "v1",
+            "deals",
+            "{{dealId}}",
+            "checkout"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+# Render Blueprint: one free web service, no build step (the server has no npm dependencies).
+# Deploy: push the repo to GitHub, then in Render choose New > Blueprint and select it.
+# After the first deploy, set BASE_URL to the service URL Render gives you (https://<name>.onrender.com)
+# and fill in the secrets marked "sync: false" in the dashboard. Never commit secrets.
+services:
+  - type: web
+    name: haggle-bot
+    runtime: node
+    plan: free
+    buildCommand: echo "no build step"
+    startCommand: node src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SELLER_KEY
+        generateValue: true          # your dashboard password; shown in the Render dashboard
+      - key: BASE_URL
+        sync: false                  # e.g. https://haggle-bot.onrender.com
+      - key: PAYPAL_CLIENT_ID
+        sync: false                  # PayPal SANDBOX app credentials (US business account recommended)
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false                  # optional: register https://<url>/api/paypal/webhook in the PayPal dashboard
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: GROQ_API_KEY
+        sync: false                  # optional second AI provider (free tier)
+      - key: PERSIST
+        value: "false"               # free instances have an ephemeral disk; deals live in memory

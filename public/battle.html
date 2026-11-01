@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HaggleBot: agent vs agent</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"></header>
+<main>
+  <h1>Agent vs agent</h1>
+  <p class="lead">A buyer's AI agent with a secret budget negotiates with the shop's AI agent. Watch the seller's guardrails hold. Pick the "manipulator" to see it try to trick the seller and fail.</p>
+
+  <div class="card" style="margin-bottom:18px">
+    <form class="form-grid" id="cfg">
+      <label>Product <select id="product"></select></label>
+      <label>Buyer agent <select id="persona">
+        <option value="fair">Fair buyer</option>
+        <option value="tough">Tough lowballer</option>
+        <option value="manipulator">Manipulator (tries to hack the seller)</option>
+      </select></label>
+      <label>Buyer's secret budget <select id="budget">
+        <option value="95">95% of list</option><option value="85" selected>85% of list</option>
+        <option value="75">75% of list</option><option value="55">55% of list (too low)</option></select></label>
+      <button id="go">Start negotiation</button>
+    </form>
+  </div>
+
+  <div id="banner" role="alert"></div>
+  <div class="arena">
+    <div class="card pane">
+      <div class="who-head"><div class="avatar buyer" id="avBuyer"></div><div><div class="role">Buyer</div><h3>Buyer's agent</h3></div></div>
+      <div class="msgs" id="buyerPane" style="min-height:240px"></div>
+    </div>
+    <div class="card pane">
+      <div class="who-head"><div class="avatar seller" id="avSeller"></div><div><div class="role">Seller</div><h3>Seller's agent</h3></div></div>
+      <div class="msgs" id="sellerPane" style="min-height:240px"></div>
+    </div>
+  </div>
+  <div class="card chart" id="chartCard" hidden>
+    <strong>Price over time</strong>
+    <div id="chart"></div>
+    <div class="legend"><span><i style="background:var(--brand)"></i>Buyer's offer</span><span><i style="background:var(--ok)"></i>Seller's ask</span></div>
+  </div>
+  <div id="result" style="margin-top:18px"></div>
+</main>
+<script src="/vendor/ag-charts/ag-charts-community.min.js"></script>
+<script src="/vendor/confetti/confetti.browser.js"></script>
+<script src="/common.js"></script>
+<script>
+header('battle');
+$('#avBuyer').append(icon('user')); $('#avSeller').append(icon('bot'));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let products = [];
+api('/api/products').then((r) => { products = r.products; $('#product').replaceChildren(...products.map((p) => el('option', { value: p.id }, `${p.name} (${usd(p.listCents)})`))); });
+
+function add(pane, role, text, extra) {
+  const m = el('div', { class: `msg ${role}` }, text, extra || null);
+  $(pane).append(m); $(pane).scrollTop = 1e9;
+}
+
+// ---------- price-over-time chart (inline SVG, no libraries) ----------
+const series = { buyer: [], seller: [] }; // [{x: turn, y: cents}]
+let agChart = null;
+function drawAgChart() {
+  const rounds = Math.max(1, ...series.buyer.map((p) => p.x), ...series.seller.map((p) => p.x));
+  const data = Array.from({ length: rounds + 1 }, (_, x) => ({
+    round: x === 0 ? 'Start' : `R${x}`,
+    buyer: (series.buyer.find((p) => p.x === x) || {}).y / 100 || null,
+    seller: (series.seller.filter((p) => p.x === x).pop() || {}).y / 100 || null,
+  }));
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const opts = {
+    container: $('#chart'), data, height: 280, background: { visible: false }, theme: dark ? 'ag-default-dark' : 'ag-default',
+    series: [
+      { type: 'line', xKey: 'round', yKey: 'buyer', yName: "Buyer's offer", stroke: '#2563eb', strokeWidth: 3, connectMissingData: true, marker: { fill: '#2563eb', size: 8 } },
+      { type: 'line', xKey: 'round', yKey: 'seller', yName: "Seller's ask", stroke: '#15803d', strokeWidth: 3, marker: { fill: '#15803d', size: 8 } },
+    ],
+    axes: { x: { type: 'category', position: 'bottom' }, y: { type: 'number', position: 'left', label: { formatter: (p) => `$${p.value}` } } },
+    legend: { enabled: false },
+  };
+  if (agChart) { try { agChart.destroy(); } catch { /* ignore */ } }
+  agChart = agCharts.AgCharts.create(opts);
+}
+function drawChart(listCents) {
+  if (window.agCharts) return drawAgChart();
+  const W = 640, H = 240, L = 48, R = 14, T = 14, B = 30, ns = 'http://www.w3.org/2000/svg';
+  const all = [...series.buyer, ...series.seller].map((p) => p.y);
+  if (!all.length) return;
+  const hi = Math.max(listCents, ...all), lo = Math.min(...all, hi) * 0.85;
+  const maxX = Math.max(2, ...series.buyer.map((p) => p.x), ...series.seller.map((p) => p.x));
+  const sx = (x) => L + (x / maxX) * (W - L - R);
+  const sy = (y) => T + (1 - (y - lo) / (hi - lo || 1)) * (H - T - B);
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `Price over time. Buyer offers ${series.buyer.map((p) => usd(p.y)).join(', ')}. Seller asks ${series.seller.map((p) => usd(p.y)).join(', ')}.`);
+  const mk = (tag, attrs, text) => { const n = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text != null) n.textContent = text; svg.append(n); return n; };
+  for (let i = 0; i <= 3; i++) {
+    const y = lo + ((hi - lo) * i) / 3;
+    mk('line', { x1: L, x2: W - R, y1: sy(y), y2: sy(y), class: 'axis' });
+    mk('text', { x: L - 6, y: sy(y) + 4, 'text-anchor': 'end' }, usd(y));
+  }
+  for (let x = 0; x <= maxX; x++) mk('text', { x: sx(x), y: H - 8, 'text-anchor': 'middle' }, x === 0 ? 'Start' : `R${x}`);
+  const line = (pts, color) => {
+    if (!pts.length) return;
+    if (pts.length > 1) mk('polyline', { points: pts.map((p) => `${sx(p.x)},${sy(p.y)}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+    for (const p of pts) mk('circle', { cx: sx(p.x), cy: sy(p.y), r: 4.5, fill: color });
+  };
+  line(series.buyer, 'var(--brand)'); line(series.seller, 'var(--ok)');
+  $('#chart').replaceChildren(svg);
+}
+// the buyer's offer as a number, taken from its message (the last "$" amount; none if it is a manipulation attempt)
+function offerFrom(text, listCents) {
+  const m = [...String(text).matchAll(/\$\s?(\d+(?:[.,]\d{1,2})?)/g)].pop();
+  if (!m) return null;
+  const c = Math.round(Number(m[1].replace(',', '.')) * 100);
+  return c > 0 && c <= listCents * 1.2 ? c : null;
+}
+
+function showBanner(show) {
+  $('#banner').replaceChildren(show ? el('div', { class: 'banner' }, icon('alert'), 'Manipulation attempt blocked. The seller ignored the instruction and kept its limits.') : '');
+}
+
+$('#cfg').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  $('#go').disabled = true; $('#result').replaceChildren(); $('#buyerPane').replaceChildren(); $('#sellerPane').replaceChildren();
+  series.buyer = []; series.seller = []; $('#chartCard').hidden = true; showBanner(false);
+  const body = { productId: $('#product').value, persona: $('#persona').value, budgetPct: Number($('#budget').value) };
+  try {
+    const res = await fetch('/api/battle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not start');
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    const product = products.find((p) => p.id === body.productId);
+    const state = { turn: 0, lastOffer: null };
+    for (;;) {
+      const { done, value } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        if (!line.trim()) continue;
+        await render(JSON.parse(line), product, state);
+      }
+    }
+  } catch (e) { $('#result').replaceChildren(el('div', { class: 'notice bad' }, e.message)); }
+  $('#go').disabled = false;
+});
+
+async function render(ev, product, state) {
+  if (ev.type === 'start') {
+    add('#sellerPane', 'seller', ev.opening);
+    series.seller.push({ x: 0, y: product.listCents }); state.turn = 0; $('#chartCard').hidden = false; drawChart(product.listCents);
+  }
+  if (ev.type === 'buyer') {
+    state.turn++;
+    add('#buyerPane', 'buyer', ev.text, el('small', { class: 'who' }, ev.provider === 'script' ? 'scripted attacker (no AI, repeatable demo)' : providerLabel({ provider: ev.provider, fellBack: ev.provider !== configuredAi }, configuredAi)));
+    state.lastOffer = offerFrom(ev.text, product.listCents);
+    await sleep(500);
+  }
+  if (ev.type === 'seller') {
+    add('#sellerPane', 'seller', ev.text, el('div', {}, chipsFor(ev.guard, ev.action), el('small', {}, `Decision: ${ev.action}, price ${usd(ev.priceCents)}`), whoLabel(ev.guard)));
+    if (ev.guard.injection) showBanner(true);
+    else if (state.lastOffer != null) series.buyer.push({ x: state.turn, y: state.lastOffer });
+    series.seller.push({ x: state.turn, y: ev.priceCents });
+    drawChart(product.listCents);
+    refreshBadge();
+    await sleep(700);
+  }
+  if (ev.type === 'end') {
+    if (ev.deal) {
+      celebrate();
+      $('#result').replaceChildren(el('div', { class: 'deal' },
+        el('div', { class: 'kicker' }, icon('check', 16), 'Deal closed'),
+        el('div', { class: 'fine' }, `The buyer's secret budget was ${usd(ev.budgetCents)}.`),
+        el('div', { class: 'big num' }, usd(ev.deal.unitCents), el('span', { class: 'price-old num', style: 'font-size:.45em;margin-left:10px' }, usd(product.listCents))),
+        el('div', { class: 'row' },
+          el('button', { id: 'pay', class: 'checkout', onclick: async () => {
+            $('#pay').disabled = true;
+            try { const r = await api('/api/checkout', { method: 'POST', body: { dealId: ev.deal.id } }); location.href = r.approveUrl; }
+            catch (e) { $('#result').append(el('div', { class: 'notice bad' }, e.message)); $('#pay').disabled = false; }
+          } }, 'Checkout with PayPal'),
+          el('span', { class: 'fine' }, 'Secure checkout with PayPal. A human approves the payment on the payment page.'))));
+    } else {
+      $('#result').replaceChildren(el('div', { class: 'notice info' }, `No deal. The buyer's budget (${usd(ev.budgetCents)}) did not meet the seller's limits, or the buyer gave up. Nothing was sold below the seller's rules.`));
+    }
+  }
+}
+</script>
+</body>
+</html>
