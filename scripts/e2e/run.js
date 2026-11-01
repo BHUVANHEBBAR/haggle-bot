@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { ui, HOME_PATH, BASE, SELLER_KEY, SHOTS, playwright, startServer, MOCK, say, openChat, negotiateToDeal, payApprove, login, openTab } = require('./lib');
 
-const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z1,z2,z3,z4,z5').split(',');
+const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z1,z2,z3,z4,z5,z6').split(',');
 const results = [];
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -595,6 +595,34 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     await page.locator('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.locator('#buyerErr').getByText(/expired|Too many/).waitFor();
     return 'five wrong codes burned the code; the right one was refused afterwards';
+  });
+
+  await flow('z6', 'Personalities: the seller picks Firm, the buyer meets that assistant, its first counter is higher than the Friendly one, the floor still holds', async () => {
+    await putProduct('tote', { stock: 20 });
+    const sellerPage = await newPage(); await login(sellerPage); await sellerPage.waitForSelector('#dash'); await openTab(sellerPage, 'Pricing rules');
+    const pick = async (name) => {
+      const radio = sellerPage.getByRole('radiogroup', { name: /Personality for/ }).getByRole('radio', { name: new RegExp('^' + name) });
+      await radio.focus(); await sellerPage.keyboard.press('Enter');             // keyboard operable
+      await sellerPage.waitForSelector('#personas [role=radio][aria-checked=true]:has-text("' + name + '")');
+    };
+    const firstCounter = async (expectLabel, opening) => {
+      const buyer = await newPage();
+      await openChat(buyer, 'Tote');
+      expect((await buyer.locator('#haggler').innerText()).includes(expectLabel), 'persona header says ' + expectLabel);
+      expect(opening.test(await buyer.locator('#msgs .msg.seller').first().innerText()), 'opening line is in the ' + expectLabel + ' voice');
+      await say(buyer, 'I can pay $5');
+      return Number((await buyer.locator('#curPrice').innerText()).replace(/[^0-9.]/g, ''));
+    };
+    await pick('Firm');
+    const firm = await firstCounter('Firm', /^Hello./);
+    await shot(sellerPage, 'z6a-persona-picker');
+    await pick('Generous');
+    const generous = await firstCounter('Generous', /^Hi there, so glad/);
+    await pick('Friendly');
+    const friendly = await firstCounter('Friendly', /^Hi! I'm the shop's assistant/);
+    expect(firm > friendly && friendly > generous, 'first counters: firm ' + firm + ' > friendly ' + friendly + ' > generous ' + generous);
+    expect(Math.min(firm, friendly, generous) >= 36, 'every counter stays at or above the $36.00 floor');
+    return 'first counters firm $' + firm + ', friendly $' + friendly + ', generous $' + generous + '; floor held';
   });
 
   await flow('g','Real AI (E2E_PROVIDER, default gemini): UI says "answered by <provider>"', async () => {

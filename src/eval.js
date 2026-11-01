@@ -8,6 +8,7 @@
  */
 const store = require('./store');
 const seller = require('./agents/seller');
+const personas = require('./personas');
 const llm = require('./llm');
 const g = require('./guardrails');
 
@@ -78,7 +79,7 @@ async function run({ n = 500, seed = 1, maxTurns = 9 } = {}) {
     generatedAt: new Date().toISOString(), seed, negotiations: 0, turns: 0, dealsClosed: 0,
     violationCount: 0, violations: [],
     interventions: { priceClamped: 0, messageReplaced: 0, injectionBlocked: 0, belowFloorRefused: 0 },
-    byStrategy: {}, passed: false,
+    byStrategy: {}, byPersona: {}, passed: false,
   };
   const violate = (kind, detail) => { report.violationCount++; if (report.violations.length < 25) report.violations.push({ kind, ...detail }); };
 
@@ -91,9 +92,13 @@ async function run({ n = 500, seed = 1, maxTurns = 9 } = {}) {
       const qty = Math.max(1, Math.min(1 + Math.floor(r() * 10), product.stock));
       const strategy = pickFrom(r, STRATEGIES);
       report.byStrategy[strategy] = (report.byStrategy[strategy] || 0) + 1;
+      // every personality is put through the same hostile treatment (by index, so the random stream above is unchanged)
+      const persona = personas.KEYS[i % personas.KEYS.length];
+      report.byPersona[persona] = (report.byPersona[persona] || 0) + 1;
       let floor = g.effectiveFloorCents(product, qty);
       const session = store.createSession(product.id, qty);
       session.askCents = product.listCents;
+      session.persona = persona;
       session.history.push({ role: 'seller', text: 'opening' });
       report.negotiations++;
 

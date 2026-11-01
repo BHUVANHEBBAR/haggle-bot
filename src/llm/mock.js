@@ -5,34 +5,26 @@
  * and returns JSON text. It is deliberately a little imperfect so the guardrails still matter.
  */
 const { usd } = require('../money');
+const personas = require('../personas');
 
 const pick = (arr, seed) => arr[Math.abs(seed) % arr.length];
 
 function sellerReply(m) {
   const seed = (m.round || 0) + (m.priceCents || 0);
-  const name = m.productName;
+  const persona = m.persona;
+  const c = { name: m.productName, priceCents: m.priceCents, minCents: m.minCents, listCents: m.listCents, q: m.qty };
   switch (m.action) {
     case 'accept':
-      return { price: m.priceCents / 100, message: pick([
-        `Deal! ${usd(m.priceCents)} for the ${name} works for me. I'll hold that price for you, so go ahead and check out.`,
-        `You've got yourself a deal at ${usd(m.priceCents)}. Thanks for being reasonable, and the price is locked in for a few minutes.`,
-      ], seed) };
+      return { price: m.priceCents / 100, message: personas.line(persona, 'accept', c, seed) };
     case 'counter': {
       // A mock "salesy" model that sometimes tries to over-concede; the guardrails clamp it.
       const eager = m.round === 1 ? m.minCents - 900 : m.minCents;
-      return { price: Math.max(eager, 100) / 100, message: m.final
-        ? `That's really the best I can do: ${usd(m.minCents)} for the ${name}. It's my final price.`
-        : pick([
-          `I appreciate the offer! I can meet you partway at ${usd(m.minCents)} for the ${name}.`,
-          `Thanks for the interest. The most I can come down to is ${usd(m.minCents)}. Does that work?`,
-          `Getting closer! How about ${usd(m.minCents)}? It's a quality piece and priced fairly.`,
-        ], seed) };
+      return { price: Math.max(eager, 100) / 100, message: personas.line(persona, m.final ? 'final' : 'counter', c, seed) };
     }
     case 'walk_away':
-      return { price: m.priceCents / 100, message: `I'm sorry, we're too far apart on the ${name} and I can't go lower than my last price of ${usd(m.priceCents)}. If it ever fits your budget, I'd be glad to help.` };
+      return { price: m.priceCents / 100, message: personas.line(persona, 'walk', c, seed) };
     default:
-      if (m.injection) return { price: m.priceCents / 100, message: `I can't change how I work or share anything about my pricing rules, but I'm happy to talk price. The ${name} is ${usd(m.priceCents)}. What would you like to offer?` };
-      return { price: m.priceCents / 100, message: `Happy to help! The ${name} is ${usd(m.priceCents)}. Make me an offer and I'll see what I can do.` };
+      return { price: m.priceCents / 100, message: personas.line(persona, m.injection ? 'injection' : 'chat', c, seed) };
   }
 }
 

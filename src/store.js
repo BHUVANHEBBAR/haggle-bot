@@ -7,21 +7,21 @@ const config = require('./config');
 
 const SEED_PRODUCTS = [
   {
-    id: 'tote', name: 'Handwoven Block-Print Tote', emoji: '👜', physical: true, payMode: 'full',
+    id: 'tote', name: 'Handwoven Block-Print Tote', emoji: '👜', physical: true, payMode: 'full', persona: 'friendly',
     description: 'Hand block-printed cotton tote made by a small studio in Jaipur. Sturdy, washable, fits a laptop.',
     listCents: 4800, costCents: 1800, minMarginPct: 25, maxDiscountPct: 25, stock: 8,
     lowStockThreshold: 2, lowStockMaxDiscountPct: 10, bulkQty: 3, bulkExtraDiscountPct: 5,
     highlights: ['Hand block-printed cotton', 'Fits a laptop', 'Washable'], shipping: 'Ships in 3-5 business days (demo store)', returns: '14-day returns on unused items (demo policy)',
   },
   {
-    id: 'lamp', name: 'Vintage 1970s Brass Desk Lamp', emoji: '💡', physical: true, payMode: 'full',
+    id: 'lamp', name: 'Vintage 1970s Brass Desk Lamp', emoji: '💡', physical: true, payMode: 'full', persona: 'friendly',
     description: 'One-of-a-kind restored brass lamp with a working switch and new wiring. Only one available.',
     listCents: 12000, costCents: 5500, minMarginPct: 20, maxDiscountPct: 20, stock: 1,
     lowStockThreshold: 2, lowStockMaxDiscountPct: 8, bulkQty: 0, bulkExtraDiscountPct: 0,
     highlights: ['Restored 1970s brass', 'New wiring, working switch', 'One of a kind'], shipping: 'Ships in 3-5 business days (demo store)', returns: '14-day returns on unused items (demo policy)',
   },
   {
-    id: 'logo', name: 'Logo Design Package (3 concepts)', emoji: '🎨', physical: false, payMode: 'authorize',
+    id: 'logo', name: 'Logo Design Package (3 concepts)', emoji: '🎨', physical: false, payMode: 'authorize', persona: 'friendly',
     description: 'Freelance logo design: three concepts, two revision rounds, final files. Payment is held (authorized) now and only captured when the designer accepts the brief.',
     listCents: 30000, costCents: 6000, minMarginPct: 30, maxDiscountPct: 30, stock: 5,
     lowStockThreshold: 1, lowStockMaxDiscountPct: 12, bulkQty: 0, bulkExtraDiscountPct: 0,

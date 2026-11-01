@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const config = require('./config');
 const store = require('./store');
 const auth = require('./auth');
+const personas = require('./personas');
 const payments = require('./payments');
 const reconcile = require('./reconcile');
 const copilot = require('./copilot');
@@ -82,6 +83,7 @@ const publicProduct = (p) => ({
   reserved: p.stock > 0 && store.availableStock(p) === 0, // someone is checking out the last one right now
   payMode: p.payMode, physical: p.physical, bulkQty: p.bulkQty || undefined,
   highlights: p.highlights || [], shipping: p.shipping || '', returns: p.returns || '',
+  haggler: personas.publicHaggler(p.persona),
 });
 const publicDeal = (d) => ({
   id: d.id, productId: d.productId, source: d.source || 'negotiated', productName: d.productName, qty: d.qty, unitCents: d.unitCents, totalCents: d.totalCents,
@@ -172,9 +174,10 @@ function startChat(productId, qty, buyerEmail = null) {
   const { product, q } = sellable(productId, qty);
   const s = store.createSession(product.id, q);
   s.buyerEmail = buyerEmail;
+  s.persona = personas.isValid(product.persona) ? product.persona : personas.DEFAULT; // fixed for this chat
   store.state.counters.chatsStarted += 1;
   s.askCents = product.listCents;
-  const opening = `Hi! I'm the shop's assistant. The ${product.name} is ${usd(product.listCents)}${q > 1 ? ` each (${q} units)` : ''}. Feel free to ask questions or make me an offer.`;
+  const opening = personas.openingLine(s.persona, { name: product.name, listCents: product.listCents, q });
   s.history.push({ role: 'seller', text: opening });
   return { s, product, qty: q, opening };
 }
@@ -229,7 +232,7 @@ route('POST', '/api/chat/buy-at-current', async (req) => {
   const message = `Deal! ${usd(unit)}${s.qty > 1 ? ' each' : ''} for the ${product.name}. The price is held for ${config.dealTtlMinutes} minutes while you check out.`;
   s.history.push({ role: 'seller', text: message });
   s.messages += 1;
-  const deal = makeDeal(product, s.qty, unit, { sessionId: s.id, messages: s.messages, transcript: s.history.slice(), source: s.round === 0 ? 'buy_now' : 'negotiated', buyerEmail: s.buyerEmail || null });
+  const deal = makeDeal(product, s.qty, unit, { sessionId: s.id, messages: s.messages, transcript: s.history.slice(), source: s.round === 0 ? 'buy_now' : 'negotiated', persona: s.persona || null, buyerEmail: s.buyerEmail || null });
   s.status = 'agreed'; s.askCents = unit; s.dealId = deal.id;
   if (deal.source === 'buy_now') store.state.counters.buyNow += 1;
   return { status: 200, body: {
@@ -382,8 +385,12 @@ route('PUT', '/api/seller/products/([a-z0-9_-]+)', async (req, m) => {
   if (b.minMarginPct !== undefined) p.minMarginPct = num(b.minMarginPct, 0, 500);
   if (b.maxDiscountPct !== undefined) p.maxDiscountPct = num(b.maxDiscountPct, 0, 90);
   if (b.stock !== undefined) p.stock = Math.round(num(b.stock, 0, 100000));
+  if (b.persona !== undefined) {
+    if (!personas.isValid(b.persona)) throw new HttpError(400, 'Unknown personality');
+    p.persona = b.persona;
+  }
   if (p.costCents > p.listCents) throw new HttpError(400, 'Cost cannot be above list price');
-  store.save(); store.logEvent('rules_changed', { productId: p.id });
+  store.save(); store.logEvent('rules_changed', { productId: p.id, persona: p.persona });
   return { status: 200, body: { product: sellerProduct(p) } };
 });
 for (const [name, fn] of [['capture', payments.sellerCapture], ['void', payments.sellerVoid], ['refund', payments.sellerRefund]]) {
@@ -447,14 +454,22 @@ route('POST', '/api/seller/simulate', async (req) => {
   };
   if (p.costCents > p.listCents) throw new HttpError(400, 'Cost cannot be above list price');
   const qty = Math.round(num(b.qty ?? 1, 1, 100));
+  if (b.persona !== undefined && !personas.isValid(b.persona)) throw new HttpError(400, 'Unknown personality');
+  const progress = personas.progressFor(b.persona ?? base.persona);
   const floorCents = g.effectiveFloorCents(p, qty);
   const round1 = (x) => Math.round(x * 10) / 10;
   return { status: 200, body: {
     floorCents, listCents: p.listCents, qty,
-    ladder: Array.from({ length: g.MAX_ROUNDS }, (_, i) => ({ round: i + 1, askCents: g.counterCents(p, qty, i + 1) })),
+    ladder: Array.from({ length: g.MAX_ROUNDS }, (_, i) => ({ round: i + 1, askCents: g.counterCents(p, qty, i + 1, progress) })),
     discountAtFloorPct: round1((1 - floorCents / p.listCents) * 100),
     marginAtFloorPct: floorCents ? round1(((floorCents - p.costCents) / floorCents) * 100) : 0,
   } };
+});
+
+// ---------- haggler personalities (seller-only: includes the pacing the buyer never sees) ----------
+route('GET', '/api/seller/personas', async (req) => {
+  requireSeller(req);
+  return { status: 200, body: { default: personas.DEFAULT, personas: personas.catalog() } };
 });
 
 // ---------- funnel analytics ----------
@@ -473,6 +488,11 @@ route('GET', '/api/seller/analytics', async (req) => {
     buyNow: { deals: bought.length, paid: bought.filter(isPaid).length },
     offersPerChat: store.state.counters.chatsWithOffer ? Math.round((store.state.counters.offersMade / store.state.counters.chatsWithOffer) * 10) / 10 : 0,
     avgMessagesToClose: msgs.length ? Math.round((msgs.reduce((a, b) => a + b, 0) / msgs.length) * 10) / 10 : 0,
+    byPersona: personas.KEYS.map((k) => {
+      const ds = deals.filter((d) => d.source !== 'buy_now' && (d.persona || personas.DEFAULT) === k); // only haggled deals reflect a personality
+      const discounts = ds.filter((d) => d.listTotalCents).map((d) => (1 - d.totalCents / d.listTotalCents) * 100);
+      return { key: k, label: personas.get(k).label, emoji: personas.get(k).emoji, deals: ds.length, paid: ds.filter(isPaid).length, avgDiscountPct: discounts.length ? Math.round((discounts.reduce((a, b) => a + b, 0) / discounts.length) * 10) / 10 : 0 };
+    }).filter((r) => r.deals > 0 || r.key === personas.DEFAULT),
     revenueByDay: Object.entries(byDay).sort().slice(-14).map(([date, cents]) => ({ date, cents })),
   } };
 });

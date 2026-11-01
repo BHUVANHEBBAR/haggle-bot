@@ -23,13 +23,14 @@ Record your screen with a free tool (OBS, or the Windows Game Bar `Win+G`). Read
 2. Show the log: "AI proposed $35.50; guardrail used $44.50".
 3. Show the rules table and the floor column.
 4. Click "Run safety check": "hundreds of hostile buyers and a deliberately misbehaving AI, zero rules broken."
+5. Optional, about 15 seconds (character): Pricing rules > **Haggler personality**, choose **Market trader** for the lamp, open the lamp chat: "same rules, a different voice and pace, and the floor line on the playground does not move."
 
 **PayPal is the source of truth (add about 25 seconds; shorten the buyer flow to make room)**
 1. After paying, open the dashboard > **PayPal check** > Reconcile: "PayPal itself confirms $41.50 received, fetched by capture ID."
 2. Open the deal's **Details**: the PayPal money trail with real order, capture and refund IDs, `debug_id`s, and the webhook marked signature verified.
 3. In **Seller Copilot** type "refund the tote deal": point at the tool calls (REST/MCP label, `debug_id`) and say "it can only propose". Click **Confirm**: PayPal refunds it, and the trail shows the refund ID.
 4. Optional, on a second tab in a clean browser profile: the sandbox Business account activity on sandbox.paypal.com showing the payment and the refund.
-(Do not mention Venmo or invoicing: they are not implemented.)
+(Invoicing exists for sandbox create/send/cancel; a buyer paying an invoice and its real webhook were not exercised live, so say "simulated" for that part. Do not mention Venmo.)
 
 **2:25 - 2:45 PayPal depth and close**
 1. In the shop, haggle the Logo Design package, pay: "This payment is held, not charged." In the dashboard click "Accept job (capture)".

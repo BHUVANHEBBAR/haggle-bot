@@ -13,6 +13,7 @@ import Reconcile from './Reconcile';
 import DealsGrid from './DealsGrid';
 import EmbedSnippet from './EmbedSnippet';
 import LiveFeed from './LiveFeed';
+import PersonaPicker from './PersonaPicker';
 import RulePlayground from './RulePlayground';
 import RulesTable from './RulesTable';
 import SafetyCheck from './SafetyCheck';
@@ -167,6 +168,7 @@ export default function Seller() {
                 <Copilot sellerKey={key} onChanged={refresh} />
               </>,
               pricing: <>
+                <PersonaPicker products={data.products} sellerKey={key} onChanged={refresh} />
                 <h2 className="mb-2.5 text-xl font-semibold tracking-tight">Your rules (private)</h2>
                 <RulesTable products={data.products} sellerKey={key} onSaved={refresh} />
                 <h2 className="mb-2.5 mt-7 text-xl font-semibold tracking-tight">Rule playground</h2>

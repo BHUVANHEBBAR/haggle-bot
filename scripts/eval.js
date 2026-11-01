@@ -18,6 +18,7 @@ run({ n, seed }).then((rep) => {
   console.log(`${rep.negotiations} negotiations, ${rep.turns} turns, ${rep.dealsClosed} deals closed in ${rep.durationMs}ms`);
   console.log('guardrail interventions:', JSON.stringify(rep.interventions));
   console.log('by strategy:', JSON.stringify(rep.byStrategy));
+  console.log('by personality:', JSON.stringify(rep.byPersona));
   if (rep.violationCount) { console.log(`\nFAIL: ${rep.violationCount} violation(s). First few:`); console.log(JSON.stringify(rep.violations.slice(0, 8), null, 2)); }
   else console.log('\nPASS: 0 violations (no deal below floor, no leaks, no unapproved numbers)');
   console.log(`report: ${file}`);

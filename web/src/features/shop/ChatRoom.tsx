@@ -135,6 +135,7 @@ export default function ChatRoom({ product, session, qty = 1, restored, onBack, 
         <div id="curPill" className="inline-flex items-baseline gap-2 rounded-full bg-navy px-4 py-1.5 text-sm text-white" aria-live="polite">
           Current price <b id="curPrice" className="num text-xl tracking-tight">{usd(price)}</b>
         </div>
+        {product.haggler && <div id="haggler" className="inline-flex items-center gap-1.5 rounded-full bg-chip px-3 py-1 text-[13px] font-semibold"><span aria-hidden>{product.haggler.emoji}</span> Chatting with the {product.haggler.label} assistant</div>}
         <div className="flex items-center gap-2 text-[13px] font-semibold text-mute">
           <span id="roundText">Offer round {Math.min(round, MAX_ROUNDS)} of {MAX_ROUNDS}</span>
           <span className="flex gap-1" aria-hidden>

@@ -35,8 +35,8 @@ export default function RulePlayground({ products, sellerKey, onApplied }: { pro
   useEffect(() => { if (product) setParams(fromProduct(product)); }, [pid]); // eslint-disable-line react-hooks/exhaustive-deps
   const dp = useDebounced(params);
   const { data: sim } = useQuery({
-    queryKey: ['simulate', pid, dp],
-    queryFn: () => api<Sim>('/api/seller/simulate', { method: 'POST', headers: headers(sellerKey), body: { productId: pid, ...dp } }),
+    queryKey: ['simulate', pid, dp, product?.persona],
+    queryFn: () => api<Sim>('/api/seller/simulate', { method: 'POST', headers: headers(sellerKey), body: { productId: pid, persona: product?.persona, ...dp } }),
     placeholderData: keepPreviousData, retry: false,
   });
   if (!product) return null;

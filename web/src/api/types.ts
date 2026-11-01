@@ -3,6 +3,7 @@ export interface Product {
   id: string; name: string; emoji: string; description: string; listCents: number;
   inStock: boolean; reserved?: boolean; stock?: number; payMode: 'full' | 'authorize'; physical: boolean; bulkQty?: number;
   highlights: string[]; shipping: string; returns: string;
+  haggler?: { key: string; label: string; emoji: string }; // who the buyer is chatting with (never the pacing)
 }
 // a closed or open negotiation restored after a refresh
 export interface HistoryItem { role: 'seller' | 'buyer'; text: string; meta: { action?: string; guard?: Guard } | null }

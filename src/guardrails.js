@@ -23,26 +23,29 @@ function effectiveFloorCents(p, qty = 1) {
   return Math.min(floor, list);
 }
 
-/** The ask the seller's concession schedule reaches at a given round (1-based). */
-function ladderCents(p, qty, round) {
+/**
+ * The ask the seller's concession schedule reaches at a given round (1-based).
+ * `progress` is the pacing table (a haggler personality may pick a slower or faster one); the floor is unaffected by it.
+ */
+function ladderCents(p, qty, round, progress = PROGRESS) {
   const floor = effectiveFloorCents(p, qty);
-  const prog = PROGRESS[Math.min(Math.max(round, 1), PROGRESS.length) - 1];
+  const prog = progress[Math.min(Math.max(round, 1), progress.length) - 1];
   return p.listCents - Math.round((p.listCents - floor) * prog);
 }
 
 const niceUp = (c) => Math.ceil(c / 50) * 50; // round counters up to the next 50 cents
 
 /** The counter-offer the seller makes at a given round (same maths decide() uses). */
-function counterCents(p, qty, round) {
+function counterCents(p, qty, round, progress = PROGRESS) {
   const floor = effectiveFloorCents(p, qty);
-  return Math.min(Math.max(niceUp(ladderCents(p, qty, round)), floor), p.listCents);
+  return Math.min(Math.max(niceUp(ladderCents(p, qty, round, progress)), floor), p.listCents);
 }
 
 /**
  * Decide what to do with a buyer message. Pure function, no AI involved.
  * offerCents: buyer's offered unit price or null; round: count of offers incl. this one.
  */
-function decide({ product, qty = 1, round, offerCents, askCents }) {
+function decide({ product, qty = 1, round, offerCents, askCents, progress = PROGRESS }) {
   const floor = effectiveFloorCents(product, qty);
   // The ask can never sit below the floor in force NOW: if the seller tightened their rules mid-chat,
   // an older, lower counter must not be honoured (it would close a deal below the new floor).
@@ -50,7 +53,7 @@ function decide({ product, qty = 1, round, offerCents, askCents }) {
   if (offerCents == null) return { action: 'chat', priceCents: ask };
 
   if (offerCents >= ask) return { action: 'accept', priceCents: ask };
-  const ladder = ladderCents(product, qty, round);
+  const ladder = ladderCents(product, qty, round, progress);
   if (offerCents >= ladder && offerCents >= floor) return { action: 'accept', priceCents: offerCents };
   if (round >= MAX_ROUNDS) return { action: 'walk_away', priceCents: ask };
 
@@ -136,6 +139,6 @@ function sanitizeReply(text, allowedCents) {
 }
 
 module.exports = {
-  MAX_ROUNDS, effectiveFloorCents, ladderCents, counterCents, decide, enforcePrice,
+  MAX_ROUNDS, PROGRESS, effectiveFloorCents, ladderCents, counterCents, decide, enforcePrice,
   extractOffer, detectInjection, sanitizeReply, usd,
 };

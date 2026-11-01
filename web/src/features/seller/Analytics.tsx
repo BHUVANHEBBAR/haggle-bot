@@ -12,6 +12,7 @@ interface Analytics {
   offersPerChat: number;
   avgMessagesToClose: number;
   revenueByDay: { date: string; cents: number }[];
+  byPersona?: { key: string; label: string; emoji: string; deals: number; paid: number; avgDiscountPct: number }[];
 }
 
 // Buyer funnel (chats > offers > deals agreed > paid) and revenue per day.
@@ -45,6 +46,14 @@ export default function AnalyticsCards({ sellerKey }: { sellerKey: string }) {
         <div className="text-[13px] text-mute">{pct(f.offered, f.chats)} of chats make an offer, {pct(f.agreed, f.offered)} of those end in a deal, {pct(f.paid, f.agreed)} of deals are paid. About {data.offersPerChat} offers per chat and {data.avgMessagesToClose} messages to close. {data.buyNow.deals} buyers skipped haggling and bought at list price ({data.buyNow.paid} paid).</div>
         <div className="min-w-0 overflow-hidden"><AgCharts options={funnel} /></div>
       </Card>
+      {data.byPersona && data.byPersona.some((r) => r.deals > 0) && (
+        <Card>
+          <strong>Haggler personalities</strong>
+          <div className="mb-2 text-[13px] text-mute">Haggled deals by the personality that closed them. A bigger average discount means more revenue given up.</div>
+          <table className="w-full border-collapse text-sm"><thead><tr className="text-left text-mute"><th className="py-1 font-semibold">Personality</th><th className="py-1 font-semibold">Deals</th><th className="py-1 font-semibold">Paid</th><th className="py-1 font-semibold">Avg discount</th></tr></thead>
+            <tbody>{data.byPersona.filter((r) => r.deals > 0).map((r) => <tr key={r.key} className="border-t border-line"><td className="py-1.5"><span aria-hidden>{r.emoji}</span> {r.label}</td><td className="num">{r.deals}</td><td className="num">{r.paid}</td><td className="num">{r.avgDiscountPct}%</td></tr>)}</tbody></table>
+        </Card>
+      )}
       <Card>
         <strong>Revenue by day</strong>
         <div className="text-[13px] text-mute">Paid and held payments, last 14 days with sales.</div>

@@ -153,6 +153,15 @@ Shopper agents (a custom GPT, a script, another company's bot) can negotiate pro
 
 `<script src="https://YOUR-HOST/embed.js" data-product="tote" async></script>` adds a floating chat button (copy the snippet from the seller dashboard). The host page cannot set a price. Results are reported with `window.addEventListener('haggle:deal', ...)`. Only `/app/embed` can be framed by other sites; every other page sends `frame-ancestors 'self'`.
 
+## Haggler personalities
+
+The seller picks how the assistant talks, per product (Seller console > Pricing rules > Haggler personality): **Friendly** (default), **Firm**, **Generous**, **Playful** and **Market trader**. A personality changes two things, both code-owned presets with no free text:
+
+- **Voice**: the prompt paragraph, the opening line, the fallback line and the offline brain's replies.
+- **Pacing**: how quickly the plain-code concession ladder moves from list price toward the seller's lowest price (`src/personas.js`, used by `ladderCents` in `src/guardrails.js`). Firm gives ground slowly, Generous quickly.
+
+What it never changes: the floor. `effectiveFloorCents` and `enforcePrice` still decide, the AI never sees the floor, every reply still passes `sanitizeReply`, and a chat keeps the personality it started with. `npm run eval` runs every personality through the same hostile treatment (100 negotiations each), and `test/personas.test.js` sweeps every personality, product, round and offer to show nothing is accepted or countered below the floor. Insights shows deals and average discount per personality. In the simulated demo the voices come from the offline brain; with a real model the voice paragraph steers it.
+
 ## Guard rails for contributors (hooks)
 
 Two layers enforce the project's own rules before a commit leaves the machine: no Claude co-author line (commits are authored by the owner only), no secrets in changed files, tests and type-check pass, and the committed `public/app/` is not older than `web/src`.
@@ -175,7 +184,7 @@ Two layers enforce the project's own rules before a commit leaves the machine: n
 npm test
 ```
 
-148 tests, no dependencies (`node:test`), plus 29 browser flows (`scripts/e2e/`), a live-sandbox proof script (`scripts/e2e/sandbox-paypal.js`) and an axe-core accessibility audit (`scripts/e2e/a11y.js`). They also cover the retry/circuit-breaker logic, the alternate AI provider, structured output and the safety eval. They cover the price rules (including a sweep proving no offer below the floor is ever accepted), an AI that tries to over-concede, prompt injection, the full simulated PayPal capture, declined card and retry, authorize/capture/void, refunds, webhook idempotency, forged webhooks, path traversal, and the real PayPal and Gemini client code against a stubbed network (headers, order body, retries, idempotency keys, token caching).
+157 tests, no dependencies (`node:test`), plus 30 browser flows (`scripts/e2e/`), a live-sandbox proof script (`scripts/e2e/sandbox-paypal.js`) and an axe-core accessibility audit (`scripts/e2e/a11y.js`). They also cover the retry/circuit-breaker logic, the alternate AI provider, structured output and the safety eval. They cover the price rules (including a sweep proving no offer below the floor is ever accepted), an AI that tries to over-concede, prompt injection, the full simulated PayPal capture, declined card and retry, authorize/capture/void, refunds, webhook idempotency, forged webhooks, path traversal, and the real PayPal and Gemini client code against a stubbed network (headers, order body, retries, idempotency keys, token caching).
 
 ## Project layout
 
@@ -191,6 +200,7 @@ src/payments.js       deal <-> PayPal orchestration, money trail and webhook han
 src/reconcile.js      PayPal as the source of truth: fetch each payment by id and compare
 src/paypal-tools.js   the Copilot's PayPal tools (REST, with PayPal MCP when it executes); src/paypal-mcp.js is the MCP client
 src/copilot.js        the seller Copilot loop; src/proposals.js holds money actions until a human confirms
+src/personas.js       haggler personalities: voice and pacing presets (never the floor)
 src/auth.js           signed login cookies, one-time buyer codes, login lockout (node:crypto only)
 src/auth.js           signed login cookies, one-time buyer codes, login lockout (node:crypto only)
 src/server.js         HTTP server (Node built-ins only)

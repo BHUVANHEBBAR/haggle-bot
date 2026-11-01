@@ -37,7 +37,8 @@ test('tokens verify, and tampering, expiry and the wrong role are all rejected',
   const [body, sig] = t.split('.');
   const forged = Buffer.from(JSON.stringify({ r: 'seller', exp: Date.now() + 1e9 })).toString('base64url');
   assert.equal(auth.verify(`${forged}.${sig}`, 'seller'), null, 'a swapped body fails the signature');
-  assert.equal(auth.verify(`${body}.x${sig.slice(1)}`, 'buyer'), null);
+  const flipped = (sig[0] === 'A' ? 'B' : 'A') + sig.slice(1); // always a different first character, so the signature really changes
+  assert.equal(auth.verify(`${body}.${flipped}`, 'buyer'), null);
   assert.equal(auth.verify(auth.sign('seller', {}, Date.now() - auth.TTL.seller - 1000), 'seller'), null, 'expired');
   assert.equal(auth.verify(undefined, 'seller'), null);
   assert.equal(auth.verify('nonsense', 'seller'), null);

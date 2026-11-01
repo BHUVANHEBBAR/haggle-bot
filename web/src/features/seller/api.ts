@@ -11,7 +11,7 @@ export interface TrailStep { ts: string; step: string; orderId?: string; capture
 export interface SellerDeal extends PublicDeal { floorTotalCents: number; costTotalCents: number; createdAt: string; captureId: string | null; authorizationId?: string | null; paypalOrderId?: string | null; invoiceId?: string | null; invoiceEmail?: string | null; trail: TrailStep[]; messages: number; transcript: { role: 'seller' | 'buyer'; text: string }[] }
 export interface SellerProduct {
   id: string; name: string; emoji: string; listCents: number; costCents: number; minMarginPct: number; maxDiscountPct: number;
-  stock: number; floorCents: number; lowStockThreshold: number; lowStockMaxDiscountPct: number; bulkQty: number; bulkExtraDiscountPct: number;
+  stock: number; floorCents: number; persona?: string; lowStockThreshold: number; lowStockMaxDiscountPct: number; bulkQty: number; bulkExtraDiscountPct: number;
 }
 export interface SellerEvent { id: string; ts: string; type: string; [k: string]: unknown }
 export interface Dashboard { stats: Stats; mode: { ai: string; paypal: string }; products: SellerProduct[]; deals: SellerDeal[]; events: SellerEvent[] }
