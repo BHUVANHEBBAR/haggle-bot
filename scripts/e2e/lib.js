@@ -83,6 +83,8 @@ async function payApprove(page, choice = 'approve') {
   await page.waitForSelector('#notice .notice');
 }
 
+async function openTab(page, name) { await page.getByRole('tab', { name }).click(); }
+
 async function login(page, key = SELLER_KEY) {
   await page.goto(ui('/seller'));
   await page.fill('#key', key);
@@ -91,4 +93,4 @@ async function login(page, key = SELLER_KEY) {
 
 const MOCK = { PAYPAL_CLIENT_ID: '', PAYPAL_CLIENT_SECRET: '', LLM_PROVIDER: 'mock', GEMINI_API_KEY: '', GROQ_API_KEY: '' };
 
-module.exports = { ui, HOME_PATH, UI_APP, PORT, BASE, SELLER_KEY, SHOTS, playwright, startServer, MOCK, say, openChat, negotiateToDeal, payApprove, login };
+module.exports = { ui, HOME_PATH, UI_APP, PORT, BASE, SELLER_KEY, SHOTS, playwright, startServer, MOCK, say, openChat, negotiateToDeal, payApprove, login, openTab };

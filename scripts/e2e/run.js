@@ -4,9 +4,9 @@
 //   PW_DIR=... E2E_FLOWS=g node scripts/e2e/run.js                      (flow g: real Gemini from .env)
 const fs = require('fs');
 const path = require('path');
-const { ui, HOME_PATH, BASE, SELLER_KEY, SHOTS, playwright, startServer, MOCK, say, openChat, negotiateToDeal, payApprove, login } = require('./lib');
+const { ui, HOME_PATH, BASE, SELLER_KEY, SHOTS, playwright, startServer, MOCK, say, openChat, negotiateToDeal, payApprove, login, openTab } = require('./lib');
 
-const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v').split(',');
+const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z1,z2,z3,z4,z5').split(',');
 const results = [];
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -57,7 +57,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     const d = (await dash()).deals.find((x) => x.id === toteDeal);
     expect(d && d.status === 'captured', `dashboard status ${d && d.status}`);
     expect(d.totalCents >= d.floorTotalCents, 'deal below floor');
-    const dp = await newPage(); await login(dp); await dp.waitForSelector('#dash:not([hidden])');
+    const dp = await newPage(); await login(dp); await dp.waitForSelector('#dash:not([hidden])'); await openTab(dp, 'Deals'); await dp.locator('#dealsGrid .ag-row').first().waitFor();
     expect(await dp.locator('#dealsGrid .ag-row', { hasText: 'captured' }).count() > 0, 'captured not visible on dashboard');
     await shot(dp, 'a3-dashboard');
     return `deal ${toteDeal} captured at $${(d.totalCents / 100).toFixed(2)} (floor $${(d.floorTotalCents / 100).toFixed(2)})`;
@@ -92,7 +92,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     const d1 = await mk();
     expect((await dash()).deals.find((x) => x.id === d1.id).status === 'authorized', 'deal 1 not authorized');
     const d2 = await mk();
-    const dp = await newPage(); await login(dp); await dp.waitForSelector('#dash:not([hidden])');
+    const dp = await newPage(); await login(dp); await dp.waitForSelector('#dash:not([hidden])'); await openTab(dp, 'Deals');
     await shot(dp, 'c1-authorized');
     await dp.locator('#dealsGrid .ag-row', { hasText: 'authorized' }).first().getByRole('button', { name: /Accept job/ }).click();
     await dp.waitForTimeout(800);
@@ -108,7 +108,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
   });
 
   await flow('d', 'Refund from the dashboard', async () => {
-    const dp = await newPage(); await login(dp); await dp.waitForSelector('#dash:not([hidden])');
+    const dp = await newPage(); await login(dp); await dp.waitForSelector('#dash:not([hidden])'); await openTab(dp, 'Deals');
     const target = (await dash()).deals.find((x) => x.status === 'captured');
     expect(target, 'no captured deal to refund (run flow a first)');
     await dp.locator('#dealsGrid .ag-row', { hasText: 'captured' }).first().getByRole('button', { name: 'Refund' }).click();
@@ -145,7 +145,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     await shot(page, 'f1-wrong-key');
     await page.fill('#key', SELLER_KEY);
     await page.getByRole('button', { name: 'Open' }).click();
-    await page.waitForSelector('#dash:not([hidden])');
+    await page.waitForSelector('#dash:not([hidden])'); await openTab(page, 'Pricing rules');
     const row = page.locator('#products tr', { hasText: 'Tote' });
     const floorBefore = await row.locator('td').nth(6).innerText();
     await row.locator('input[aria-label$="maxDiscountPct"]').fill('10');
@@ -161,7 +161,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 
   await flow('h', 'Dashboard safety check: runs hostile eval and shows 0 violations', async () => {
     const page = await newPage();
-    await login(page); await page.waitForSelector('#dash:not([hidden])');
+    await login(page); await page.waitForSelector('#dash:not([hidden])'); await openTab(page, 'Pricing rules');
     await page.getByRole('button', { name: 'Run safety check' }).click();
     await page.waitForFunction(() => /simulated negotiations/.test(document.querySelector('#evalCard')?.textContent || ''), null, { timeout: 60000 });
     const txt = (await page.locator('#evalCard').innerText()).replace(/\s+/g, ' ');
@@ -172,7 +172,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 
   await flow('i', 'Rule playground: sliders redraw the floor, nothing saved until Apply', async () => {
     const page = await newPage();
-    await login(page); await page.waitForSelector('#dash:not([hidden])');
+    await login(page); await page.waitForSelector('#dash:not([hidden])'); await openTab(page, 'Pricing rules');
     const floor = page.getByTestId('sim-floor');
     await floor.waitFor({ timeout: 15000 });
     await page.waitForFunction(() => document.querySelector('[data-testid=sim-floor]')?.textContent === '$36.00', null, { timeout: 10000 });
@@ -365,7 +365,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 
   await flow('s', 'PayPal check: every payment is fetched from PayPal by its id and compared with our records', async () => {
     const buyer = await newPage(); await negotiateToDeal(buyer, 'Tote', '$5', '$30'); await payApprove(buyer);
-    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])');
+    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])'); await openTab(page, 'Money & PayPal');
     await page.click('#reconcileBtn');
     await page.waitForSelector('#reconcileSummary', { timeout: 20000 });
     const summary = await page.locator('#reconcileSummary').innerText();
@@ -381,7 +381,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
   await flow('t', 'Copilot: a refund is only a proposal; Confirm makes PayPal refund it; the trail records the refund id', async () => {
     const buyer = await newPage(); await negotiateToDeal(buyer, 'Tote', '$5', '$30'); await payApprove(buyer);
     const id = await dealIdFrom(buyer);
-    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])');
+    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])'); await openTab(page, 'Money & PayPal');
     await page.fill('#copilotInput', 'Please refund the tote deal');
     await page.click('#copilotSend');
     await page.locator('[data-testid=proposal]').first().waitFor({ timeout: 20000 });
@@ -402,7 +402,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
   });
 
   await flow('u', 'Money trail drawer: order, capture and the signature-verified webhook with real ids', async () => {
-    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])');
+    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])'); await openTab(page, 'Deals');
     await page.locator('#dealsGrid .ag-row', { hasText: /captured|refunded/ }).first().getByRole('button', { name: 'Details' }).click();
     await page.waitForSelector('#moneyTrail', { timeout: 10000 });
     const txt = await page.locator('#moneyTrail').innerText();
@@ -417,7 +417,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     const buyer = await newPage(); await negotiateToDeal(buyer, 'Tote', '$5', '$30'); // agreed, not paid
     const agreed = (await dash()).deals.filter((x) => x.status === 'agreed').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     expect(agreed, 'an agreed deal exists');
-    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])');
+    const page = await newPage(); await login(page); await page.waitForSelector('#dash:not([hidden])'); await openTab(page, 'Deals');
     await page.locator('#dealsGrid .ag-row[row-id="' + agreed.id + '"]').getByRole('button', { name: 'Send PayPal invoice' }).click();
     await page.fill('#invEmail', 'buyer@example.com');
     await shot(page, 'v1-invoice-form');
@@ -438,6 +438,163 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     await order.getByText(/Payment received/).first().waitFor({ timeout: 10000 });
     await shot(order, 'v2-invoice-paid');
     return 'invoice ' + d.invoiceId + ' paid, deal captured with ' + d.captureId;
+  });
+
+  await flow('w', 'Buyer account: sign in with an email code, buy, the order is listed under My orders, sign out; guests still buy', async () => {
+    const page = await newPage();
+    await page.goto(ui('/'));
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.fill('#buyerEmail', 'shopper@example.com');
+    await page.getByRole('button', { name: 'Send me a code' }).click();
+    const code = await page.getByTestId('demo-code').innerText();
+    expect(/^\d{6}$/.test(code), 'demo code shown: ' + code);
+    await shot(page, 'w1-buyer-code');
+    await page.fill('#buyerCode', '000000' === code ? '111111' : '000000');
+    await page.locator('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.locator('#buyerErr').getByText(/not right/).waitFor();
+    await page.fill('#buyerCode', code);
+    await page.locator('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.getByText('shopper@example.com').first().waitFor();
+    await page.locator('.pcard', { hasText: 'Tote' }).getByRole('button', { name: 'Buy now' }).click();
+    await page.waitForURL(orderPath);
+    await page.goto(ui('/orders'));
+    await page.getByText('Signed in as').waitFor();
+    await page.getByRole('list', { name: 'Your orders' }).getByText('Tote').first().waitFor();
+    await shot(page, 'w2-my-orders');
+    // another browser (a guest) sees none of it
+    const guest = await newPage(); await guest.goto(ui('/orders'));
+    await guest.getByRole('heading', { name: 'Sign in to see your orders' }).waitFor();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+    // guest checkout still works end to end
+    await guest.goto(ui('/'));
+    await guest.locator('.pcard', { hasText: 'Tote' }).getByRole('button', { name: 'Buy now' }).click();
+    await guest.waitForURL(orderPath);
+    await guest.waitForSelector('#pay');
+    return 'signed in, order listed, guest sees nothing, guest checkout works';
+  });
+
+  await flow('x', 'Seller session: sign in, reload keeps the session, a buyer cannot enter, sign out ends it', async () => {
+    const page = await newPage(); await login(page);
+    await page.waitForSelector('#dash:not([hidden])');
+    await page.reload();
+    await page.waitForSelector('#dash', { timeout: 10000 });          // the cookie restores the session, no key typed
+    expect((await page.evaluate(() => sessionStorage.getItem('sk'))) === null, 'the key is not kept in the page');
+    expect((await page.evaluate(() => document.cookie)).includes('hb_seller') === false, 'session cookie is HttpOnly (invisible to scripts)');
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await page.waitForSelector('#login');
+    expect(await page.locator('#dash').count() === 0, 'dashboard closed after sign out');
+    await page.reload();
+    await page.waitForSelector('#login');                              // still signed out after a reload
+    // the shop header has no seller link of its own; the console has no shop navigation
+    await page.goto(ui('/'));
+    expect(await page.getByRole('link', { name: 'Seller dashboard' }).count() === 0, 'no seller link in the buyer nav');
+    await shot(page, 'x1-seller-signed-out');
+    return 'cookie session restored on reload, gone after sign out';
+  });
+
+  await flow('y', 'Mobile 375px: menu button opens the nav, no horizontal overflow on shop, orders and seller sign-in', async () => {
+    const page = await newPage(); await page.setViewportSize({ width: 375, height: 800 });
+    for (const p of ['/', '/orders', '/seller']) {
+      await page.goto(ui(p));
+      await page.waitForTimeout(400);
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(over <= 1, `horizontal overflow ${over}px on ${p}`);
+    }
+    await page.goto(ui('/'));
+    await page.getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('link', { name: 'My orders' }).click();
+    await page.getByRole('heading', { name: 'My orders' }).waitFor();
+    await shot(page, 'y1-mobile-orders');
+    return 'no overflow at 375px; menu works';
+  });
+
+  await flow('z1', 'Phone (375px): deals show as cards with their money actions, and an invoice can be sent from a card', async () => {
+    const buyer = await newPage(); await negotiateToDeal(buyer, 'Tote', '$5', '$30'); await payApprove(buyer);          // a captured deal
+    // an agreed deal on whichever product is still in stock (earlier flows may have sold the lamp)
+    await putProduct('tote', { stock: 20 });                    // earlier flows sell and hold units: start from a known stock
+    const stocked = (await (await fetch(`${BASE}/api/products`)).json()).products.find((p) => p.inStock && p.physical);
+    expect(stocked, 'a product is in stock');
+    const agreedId = (await (await fetch(`${BASE}/api/buy-now`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productId: stocked.id }) })).json()).deal.id;
+    const page = await newPage(); await page.setViewportSize({ width: 375, height: 800 });
+    await login(page); await page.waitForSelector('#dash'); await openTab(page, 'Deals');
+    await page.waitForSelector('#dealsList');
+    expect(await page.locator('#dealsGrid').count() === 0, 'the wide grid is not used on a phone');
+    expect(await page.locator('#dealsList').getByRole('button', { name: 'Refund' }).first().isVisible(), 'Refund reachable on a captured deal');
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    expect(over <= 1, `horizontal overflow ${over}px`);
+    await shot(page, 'z1-phone-deals');
+    const card = page.locator('#dealsList li', { hasText: stocked.name }).filter({ has: page.getByRole('button', { name: 'Send PayPal invoice' }) }).first();
+    await card.getByRole('button', { name: 'Send PayPal invoice' }).click();
+    await page.fill('#invEmail', 'phone-buyer@example.com');
+    await page.getByRole('button', { name: 'Send invoice' }).click();
+    let d;
+    for (let i = 0; i < 25; i++) { d = (await dash()).deals.find((x) => x.status === 'invoiced' && x.invoiceEmail === 'phone-buyer@example.com'); if (d) break; await page.waitForTimeout(200); }
+    expect(d, 'an invoice was created from the phone card');
+    return `card list used, refund reachable, invoice ${d.invoiceId} sent from a card (agreed deal ${agreedId})`;
+  });
+
+  await flow('z2', 'Order progress: pay step is current before payment; after payment steps 1-2 are done and "Seller ships" is current', async () => {
+    const page = await newPage();
+    await putProduct('tote', { stock: 20 });                    // earlier flows sell and hold units: start from a known stock
+    const stocked = (await (await fetch(`${BASE}/api/products`)).json()).products.find((p) => p.inStock && p.physical);
+    expect(stocked, 'a product is in stock');
+    await page.goto(ui('/')); await page.locator('.pcard', { hasText: stocked.name }).getByRole('button', { name: 'Buy now' }).click();
+    await page.waitForSelector('#pay');
+    const steps = page.getByRole('list', { name: 'Order progress' }).locator('li');
+    expect((await steps.nth(1).getAttribute('aria-current')) === 'step', 'step 2 is current before paying');
+    expect((await steps.nth(2).getAttribute('aria-current')) === null, 'step 3 is not current yet');
+    await payApprove(page);
+    const after = page.getByRole('list', { name: 'Order progress' }).locator('li');
+    expect((await after.nth(2).getAttribute('aria-current')) === 'step', 'seller ships is the current step after payment');
+    expect(/done/.test(await after.nth(0).innerText()) && /done/.test(await after.nth(1).innerText()), 'steps 1 and 2 are marked done');
+    expect(!/done/.test(await after.nth(2).innerText()), 'step 3 is not marked done');
+    await shot(page, 'z2-order-steps');
+    return 'steps: current before paying, done/done/current after';
+  });
+
+  await flow('z3', 'Phone (375px) header: menu, sign in and theme sit on the same row as the logo; menu is keyboard operable', async () => {
+    const page = await newPage(); await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto(ui('/'));
+    const top = async (loc) => (await loc.boundingBox()).y;
+    const logo = await top(page.getByRole('link', { name: 'HaggleBot home' }));
+    const signIn = await top(page.getByRole('button', { name: 'Sign in', exact: true }));
+    const theme = await top(page.getByRole('button', { name: /Switch to (dark|light) theme/ }));
+    expect(Math.abs(signIn - logo) < 20 && Math.abs(theme - logo) < 20, `header wrapped: logo ${logo}, sign in ${signIn}, theme ${theme}`);
+    await page.getByRole('button', { name: 'Open menu' }).focus(); await page.keyboard.press('Enter');
+    await page.getByRole('link', { name: 'My orders' }).waitFor();
+    return 'one header row; menu opens from the keyboard';
+  });
+
+  await flow('z4', 'Seller console tabs: arrow keys move between tabs, Home/End jump, ?tab= opens a section directly', async () => {
+    const page = await newPage(); await login(page); await page.waitForSelector('#dash');
+    await page.getByRole('tab', { name: 'Overview' }).focus();
+    const selected = (id) => page.waitForSelector(`#tab-${id}[aria-selected=true]`, { timeout: 5000 });
+    await page.keyboard.press('ArrowRight'); await selected('deals');
+    await page.keyboard.press('End'); await selected('settings');
+    await page.keyboard.press('Home'); await selected('overview');
+    await page.goto(ui('/seller?tab=money'));
+    await page.waitForSelector('#reconcileBtn');
+    expect((await page.getByRole('tab', { name: /Money/ }).getAttribute('aria-selected')) === 'true', 'deep link opens Money');
+    return 'keyboard navigation and deep link work';
+  });
+
+  await flow('z5', 'Buyer sign-in errors: a bad email is refused, and five wrong codes burn the code', async () => {
+    const page = await newPage(); await page.goto(ui('/orders'));
+    await page.getByRole('button', { name: 'Sign in with email' }).click();
+    await page.fill('#buyerEmail', 'burn@example.com');
+    await page.getByRole('button', { name: 'Send me a code' }).click();
+    const code = await page.getByTestId('demo-code').innerText();
+    const wrong = code === '123456' ? '654321' : '123456';
+    for (let i = 0; i < 5; i++) {
+      await page.fill('#buyerCode', wrong);
+      await page.locator('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
+      await page.locator('#buyerErr').getByText(/not right/).waitFor();
+    }
+    await page.fill('#buyerCode', code);                       // even the right code no longer works
+    await page.locator('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.locator('#buyerErr').getByText(/expired|Too many/).waitFor();
+    return 'five wrong codes burned the code; the right one was refused afterwards';
   });
 
   await flow('g','Real AI (E2E_PROVIDER, default gemini): UI says "answered by <provider>"', async () => {

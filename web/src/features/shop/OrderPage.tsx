@@ -44,7 +44,7 @@ export default function OrderPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <div id="notice" role="status">
-        {paid && <Notice kind="ok">{`Paid ${usd(d.totalCents)} for "${d.productName}". Thank you! Order reference: ${d.id}`}</Notice>}
+        {paid && <Notice kind="ok">{`Paid ${usd(d.totalCents)} for "${d.productName}". Order reference: ${d.id}`}</Notice>}
         {held && <Notice kind="ok">{`Payment of ${usd(d.totalCents)} is on hold for "${d.productName}". It is charged only when the seller accepts. Order reference: ${d.id}`}</Notice>}
       </div>
       <div className="mb-1 flex items-center gap-2.5 text-sm font-semibold text-mute no-print">
@@ -54,6 +54,22 @@ export default function OrderPage() {
         {paid || held ? <CheckCircle2 className="text-ok" size={30} aria-hidden /> : expired ? <Clock className="text-accent" size={30} aria-hidden /> : <PackageCheck className="text-brand" size={30} aria-hidden />}{headline}
       </h1>
       <p className="mb-4 mt-0 text-mute">{sub}</p>
+      {['agreed', 'order_created', 'authorized', 'captured', 'invoiced'].includes(d.status) && (() => {
+        // done steps are filled; "current" is what is happening now: paying, or (after payment) the seller's turn
+        const at = paid ? 2 : 1;
+        const steps = ['Price agreed', held ? 'Payment on hold' : invoiced ? 'Invoice sent' : pending ? 'PayPal confirming' : 'Pay with PayPal', product?.physical ? 'Seller ships' : 'Work starts'];
+        return (
+          <ol aria-label="Order progress" className="no-print mb-4 grid list-none grid-cols-3 gap-2 p-0">
+            {steps.map((s, i) => (
+              <li key={s} aria-current={i === at ? 'step' : undefined}
+                className={`rounded-xl border px-3 py-2 text-center text-[13px] font-semibold ${i < at ? 'border-ok bg-ok-soft text-ink' : i === at ? 'border-brand border-2 bg-brand-soft text-ink' : 'border-line text-mute'}`}>
+                {i < at ? <CheckCircle2 size={14} className="mr-1 inline text-ok" aria-hidden /> : <span className="num mr-1">{i + 1}.</span>}{s}
+                {i < at && <span className="sr"> (done)</span>}{i === at && <span className="sr"> (current step)</span>}
+              </li>
+            ))}
+          </ol>
+        );
+      })()}
 
       <Card className="mb-4">
         <div className="flex gap-4">

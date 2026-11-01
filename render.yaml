@@ -15,8 +15,12 @@ services:
         value: "22"
       - key: SELLER_KEY
         generateValue: true          # your dashboard password; shown in the Render dashboard
+      - key: SESSION_SECRET
+        generateValue: true          # signs login cookies, so sign-ins survive a restart
+      - key: TRUST_PROXY
+        value: "true"                # Render's proxy sets x-forwarded-for; needed for per-visitor rate limits and login lockout
       - key: BASE_URL
-        sync: false                  # e.g. https://haggle-bot.onrender.com
+        sync: false                 # e.g. https://haggle-bot.onrender.com
       - key: PAYPAL_CLIENT_ID
         sync: false                  # PayPal SANDBOX app credentials (US business account recommended)
       - key: PAYPAL_CLIENT_SECRET
@@ -25,8 +29,16 @@ services:
         sync: false                  # optional: register https://<url>/api/paypal/webhook in the PayPal dashboard
       - key: GEMINI_API_KEY
         sync: false
+      - key: PAYPAL_ENVIRONMENT
+        value: sandbox               # sandbox only; the server refuses to start with anything else
+      - key: NODE_ENV
+        value: production            # also arms the check that SELLER_KEY is not the default
+      - key: LLM_PROVIDER
+        value: groq                  # gemini | groq | compat | mock; falls back to the offline brain if a provider fails
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
       - key: GEMINI_MODEL
-        value: gemini-3.1-flash-lite
+        value: gemini-flash-latest
       - key: GROQ_API_KEY
         sync: false                  # optional second AI provider (free tier)
       - key: PERSIST

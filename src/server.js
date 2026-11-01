@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const config = require('./config');
 const store = require('./store');
+const auth = require('./auth');
 const payments = require('./payments');
 const reconcile = require('./reconcile');
 const copilot = require('./copilot');
@@ -49,9 +50,18 @@ async function readJson(req) {
   try { return JSON.parse(raw); } catch { throw new HttpError(400, 'Invalid JSON'); }
 }
 
+// the client address; behind a trusted proxy (TRUST_PROXY=true) it is the first hop of x-forwarded-for, otherwise the socket
+function clientIp(req) {
+  if (config.trustProxy) {
+    const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (fwd) return fwd;
+  }
+  return req.socket.remoteAddress || 'x';
+}
+
 const hits = new Map();
 function rateLimit(req, key, max, windowMs = 60000) {
-  const ip = req.socket.remoteAddress || 'x';
+  const ip = clientIp(req);
   const k = `${key}:${ip}`, now = Date.now();
   const arr = (hits.get(k) || []).filter((t) => now - t < windowMs);
   if (arr.length >= max * config.rateLimitMultiplier) throw new HttpError(429, 'Too many requests. Please slow down a little.');
@@ -59,11 +69,12 @@ function rateLimit(req, key, max, windowMs = 60000) {
 }
 setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (!v.some((t) => now - t < 60000)) hits.delete(k); }, 60000).unref();
 
+// the seller is recognised by the x-seller-key header (scripts, tests) or by the session cookie the login form sets
 function requireSeller(req) {
-  const given = Buffer.from(String(req.headers['x-seller-key'] || ''));
-  const want = Buffer.from(config.sellerKey);
-  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) throw new HttpError(401, 'Wrong seller key');
+  if (!auth.sellerFromRequest(req)) throw new HttpError(401, 'Wrong seller key');
 }
+// the signed-in buyer's email, or null for a guest
+const buyerEmailOf = (req) => auth.buyerFromRequest(req)?.email || null;
 
 const publicProduct = (p) => ({
   id: p.id, name: p.name, emoji: p.emoji, description: p.description, listCents: p.listCents,
@@ -89,6 +100,61 @@ route('GET', '/api/health', async () => ({ status: 200, body: {
   sellerKeyIsDefault: config.sellerKey === 'change-me',
 } }));
 
+// ---------- sign-in: seller (SELLER_KEY -> session cookie) and buyer (email + one-time code) ----------
+route('POST', '/api/seller/login', async (req, m, u, res) => {
+  const ip = clientIp(req);
+  if (auth.lockedOut(ip)) throw new HttpError(429, `Too many wrong keys. Try again in ${Math.ceil(auth.lockSecondsLeft(ip) / 60)} minute(s).`);
+  const { key } = await readJson(req);
+  if (!auth.sellerKeyOk(key)) { auth.recordFail(ip); throw new HttpError(401, 'Wrong seller key'); }
+  auth.clearFails(ip);
+  send(res, 200, { ok: true }, { 'set-cookie': auth.sellerCookie(req), 'cache-control': 'no-store' });
+  return { handled: true };
+});
+route('POST', '/api/seller/logout', async (req, m, u, res) => {
+  send(res, 200, { ok: true }, { 'set-cookie': auth.clearCookie(auth.SELLER_COOKIE, auth.isSecureRequest(req)) });
+  return { handled: true };
+});
+route('GET', '/api/seller/me', async (req) => { requireSeller(req); return { status: 200, body: { ok: true } }; });
+
+route('POST', '/api/buyer/login/start', async (req) => {
+  rateLimit(req, 'buyerstart', 10);
+  const email = auth.normEmail((await readJson(req)).email);
+  if (!auth.validEmail(email)) throw new HttpError(400, 'Please enter a valid email address.');
+  const r = auth.startCode(email);
+  if (r.wait) throw new HttpError(429, `A code was just sent. You can ask for another in ${r.wait} seconds.`);
+  // no mail service is connected (sandbox-only demo), so the code is shown on screen unless BUYER_DEMO_CODES=false
+  return { status: 200, body: { sent: true, ...(config.buyerDemoCodes ? { demoCode: r.code } : {}) } };
+});
+route('POST', '/api/buyer/login/verify', async (req, m, u, res) => {
+  const ip = clientIp(req);
+  if (auth.lockedOut('b:' + ip)) throw new HttpError(429, 'Too many wrong codes. Please try again in a few minutes.');
+  const b = await readJson(req);
+  const email = auth.normEmail(b.email);
+  const r = auth.checkCode(email, b.code);
+  if (r !== 'ok') {
+    auth.recordFail('b:' + ip);
+    throw new HttpError(401, r === 'wrong' ? 'That code is not right.' : 'That code has expired. Please ask for a new one.');
+  }
+  auth.clearFails('b:' + ip);
+  send(res, 200, { ok: true, email }, { 'set-cookie': auth.buyerCookie(req, email), 'cache-control': 'no-store' });
+  return { handled: true };
+});
+route('POST', '/api/buyer/logout', async (req, m, u, res) => {
+  send(res, 200, { ok: true }, { 'set-cookie': auth.clearCookie(auth.BUYER_COOKIE, auth.isSecureRequest(req)) });
+  return { handled: true };
+});
+route('GET', '/api/buyer/me', async (req) => {
+  const b = auth.buyerFromRequest(req);
+  return { status: 200, body: b ? { signedIn: true, email: b.email } : { signedIn: false } };
+});
+route('GET', '/api/buyer/orders', async (req) => {
+  const email = buyerEmailOf(req);
+  if (!email) throw new HttpError(401, 'Please sign in to see your orders.');
+  const orders = store.state.deals.filter((d) => d.buyerEmail === email).slice(0, 50)
+    .map((d) => ({ ...publicDeal(d), createdAt: d.createdAt }));
+  return { status: 200, body: { email, orders } };
+});
+
 route('GET', '/api/products', async () => ({ status: 200, body: { products: store.state.products.map(publicProduct) } }));
 
 // a product that can be sold right now, and a sane quantity of it (stock minus what other buyers are mid-checkout on)
@@ -102,9 +168,10 @@ function sellable(productId, qty) {
 }
 
 // one place that opens a negotiation, used by the web chat and the agent API
-function startChat(productId, qty) {
+function startChat(productId, qty, buyerEmail = null) {
   const { product, q } = sellable(productId, qty);
   const s = store.createSession(product.id, q);
+  s.buyerEmail = buyerEmail;
   store.state.counters.chatsStarted += 1;
   s.askCents = product.listCents;
   const opening = `Hi! I'm the shop's assistant. The ${product.name} is ${usd(product.listCents)}${q > 1 ? ` each (${q} units)` : ''}. Feel free to ask questions or make me an offer.`;
@@ -115,7 +182,7 @@ function startChat(productId, qty) {
 route('POST', '/api/chat/start', async (req) => {
   rateLimit(req, 'start', 30);
   const { productId, qty } = await readJson(req);
-  const { s, product, qty: q, opening } = startChat(productId, qty);
+  const { s, product, qty: q, opening } = startChat(productId, qty, buyerEmailOf(req));
   return { status: 200, body: { sessionId: s.id, message: opening, product: publicProduct(product), qty: q } };
 });
 
@@ -141,7 +208,7 @@ route('POST', '/api/buy-now', async (req) => {
   rateLimit(req, 'buynow', 20);
   const { productId, qty } = await readJson(req);
   const { product, q } = sellable(productId, qty);
-  const deal = makeDeal(product, q, product.listCents, { sessionId: null, messages: 0, transcript: [], source: 'buy_now' });
+  const deal = makeDeal(product, q, product.listCents, { sessionId: null, messages: 0, transcript: [], source: 'buy_now', buyerEmail: buyerEmailOf(req) });
   store.state.counters.buyNow += 1;
   return { status: 200, body: { deal: dealView(deal) } };
 });
@@ -162,7 +229,7 @@ route('POST', '/api/chat/buy-at-current', async (req) => {
   const message = `Deal! ${usd(unit)}${s.qty > 1 ? ' each' : ''} for the ${product.name}. The price is held for ${config.dealTtlMinutes} minutes while you check out.`;
   s.history.push({ role: 'seller', text: message });
   s.messages += 1;
-  const deal = makeDeal(product, s.qty, unit, { sessionId: s.id, messages: s.messages, transcript: s.history.slice(), source: s.round === 0 ? 'buy_now' : 'negotiated' });
+  const deal = makeDeal(product, s.qty, unit, { sessionId: s.id, messages: s.messages, transcript: s.history.slice(), source: s.round === 0 ? 'buy_now' : 'negotiated', buyerEmail: s.buyerEmail || null });
   s.status = 'agreed'; s.askCents = unit; s.dealId = deal.id;
   if (deal.source === 'buy_now') store.state.counters.buyNow += 1;
   return { status: 200, body: {

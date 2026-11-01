@@ -1,0 +1,49 @@
+{
+  "enabledPlugins": {
+    "paypal@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard.js\"",
+            "timeout": 15,
+            "statusMessage": "Checking command against project rules..."
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/precommit.js\"",
+            "timeout": 300,
+            "statusMessage": "Pre-commit checks (secrets, tests, types)..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard.js\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/postedit.js\"",
+            "timeout": 120,
+            "statusMessage": "Type-checking the edited file..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -74,7 +74,7 @@ cp .env.example .env     # then edit .env
 
 1. **PayPal Sandbox:** at developer.paypal.com create a Sandbox app, and put its Client ID and Secret in `.env` (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`). The app only ever talks to `api-m.sandbox.paypal.com`. Pay using a Sandbox *Personal* test account.
 2. **AI model (free tiers available):** put a key in `GEMINI_API_KEY` (Google AI Studio), `GROQ_API_KEY` (Groq; the default model is `openai/gpt-oss-120b`, and if your key can't use the configured model the app switches to one it can and tells you; run `node scripts/check-ai.js` to see your options), or point `LLM_BASE_URL` / `LLM_MODEL` at any OpenAI-compatible endpoint (OpenRouter, a local Ollama, ...). The app uses the one you pick, falls back to the others, and finally to the offline brain. A failing provider is retried once and then paused for 60 seconds, so a demo never dies on a rate limit or an overloaded model. Every reply is labelled with the brain that actually answered, and `/api/health` reports the last AI result.
-3. Set your own `SELLER_KEY` (the dashboard password).
+3. Set your own `SELLER_KEY` (the dashboard password). On a public host also set `SESSION_SECRET` (signs login cookies) and, behind a proxy such as Render, `TRUST_PROXY=true` (so rate limits and the login lockout see each visitor's real address).
 4. Optional webhooks: PayPal cannot call `localhost`. Expose the app through a public URL, register `https://<your-url>/api/paypal/webhook` in the PayPal dashboard, and set `PAYPAL_WEBHOOK_ID` and `BASE_URL`. Without this, payments still complete through the return flow, and the signed-webhook path is exercised in demo mode.
 
 `.env` is git-ignored. Never commit keys.
@@ -87,7 +87,8 @@ The UI is a React app (source in `web/`, built output committed in `public/app/`
 |---|---|
 | `/app/` (`/` redirects here) | Shop, haggle chat with quick offers, deal card with price-hold countdown, PayPal checkout |
 | `/app/battle` | Agent vs agent negotiation with a live price chart, including the manipulation demo |
-| `/app/seller` | Seller dashboard (key = `SELLER_KEY`, default `change-me` in demo mode): live activity feed, safety check, funnel analytics, deals grid with CSV export, **rule playground**, rules, embed snippet |
+| `/app/orders` | **My orders** for a signed-in buyer (optional email + one-time-code sign-in; guests can still buy) |
+| `/app/seller` | **Seller console** (sign in with `SELLER_KEY`, default `change-me` in demo mode; session cookie, sign out, lockout after 5 wrong keys). Six tabs: Overview (live feed, charts), Deals (grid, CSV, invoicing), Money & PayPal (reconcile, Copilot), Pricing rules (rules, **rule playground**, safety check), Insights, Settings (embed snippet, event log) |
 | `/app/agents` | "For agents": documentation and a live console for the open negotiation API |
 | `/app/embed?product=tote` | The chat widget, loaded by `embed.js` |
 | `/index.html`, `/battle.html`, `/seller.html` | The original no-build pages, kept as a fallback |
@@ -152,6 +153,14 @@ Shopper agents (a custom GPT, a script, another company's bot) can negotiate pro
 
 `<script src="https://YOUR-HOST/embed.js" data-product="tote" async></script>` adds a floating chat button (copy the snippet from the seller dashboard). The host page cannot set a price. Results are reported with `window.addEventListener('haggle:deal', ...)`. Only `/app/embed` can be framed by other sites; every other page sends `frame-ancestors 'self'`.
 
+## Guard rails for contributors (hooks)
+
+Two layers enforce the project's own rules before a commit leaves the machine: no Claude co-author line (commits are authored by the owner only), no secrets in changed files, tests and type-check pass, and the committed `public/app/` is not older than `web/src`.
+
+- **Claude Code hooks** (`.claude/settings.json`, scripts in `scripts/hooks/`): block a bad `git commit`, deny edits to `.env` and commands that print secrets, deny force-push and ask before any push, and type-check a file right after it is edited.
+- **Git hooks** (`.githooks/`, for commits made by hand): enable once with `git config core.hooksPath .githooks`. Set `ALLOW_COAUTHOR=1` to allow a co-author trailer for one commit.
+- The scripts never print a secret value: only the file name and the rule that matched. `test/hooks.test.js` covers them.
+
 ## Proof that the guardrails hold
 
 `npm run eval` throws hundreds of seeded negotiations at the real seller pipeline: hostile buyers (lowballs, offers a cent under the floor, prompt injections, odd amounts) and a deliberately hostile "AI" (over-concedes, leaks internals, invents prices, returns junk). It checks, independently of the production code, that no deal is below the floor, nothing leaks, and no unapproved number is quoted. The seller dashboard has a **Safety check** card that runs it on demand. A test also sabotages the guardrails on purpose to prove the eval can fail.
@@ -166,7 +175,7 @@ Shopper agents (a custom GPT, a script, another company's bot) can negotiate pro
 npm test
 ```
 
-131 tests, no dependencies (`node:test`), plus 20 browser flows (`scripts/e2e/`), a live-sandbox proof script (`scripts/e2e/sandbox-paypal.js`) and an axe-core accessibility audit (`scripts/e2e/a11y.js`). They also cover the retry/circuit-breaker logic, the alternate AI provider, structured output and the safety eval. They cover the price rules (including a sweep proving no offer below the floor is ever accepted), an AI that tries to over-concede, prompt injection, the full simulated PayPal capture, declined card and retry, authorize/capture/void, refunds, webhook idempotency, forged webhooks, path traversal, and the real PayPal and Gemini client code against a stubbed network (headers, order body, retries, idempotency keys, token caching).
+148 tests, no dependencies (`node:test`), plus 29 browser flows (`scripts/e2e/`), a live-sandbox proof script (`scripts/e2e/sandbox-paypal.js`) and an axe-core accessibility audit (`scripts/e2e/a11y.js`). They also cover the retry/circuit-breaker logic, the alternate AI provider, structured output and the safety eval. They cover the price rules (including a sweep proving no offer below the floor is ever accepted), an AI that tries to over-concede, prompt injection, the full simulated PayPal capture, declined card and retry, authorize/capture/void, refunds, webhook idempotency, forged webhooks, path traversal, and the real PayPal and Gemini client code against a stubbed network (headers, order body, retries, idempotency keys, token caching).
 
 ## Project layout
 
@@ -182,6 +191,8 @@ src/payments.js       deal <-> PayPal orchestration, money trail and webhook han
 src/reconcile.js      PayPal as the source of truth: fetch each payment by id and compare
 src/paypal-tools.js   the Copilot's PayPal tools (REST, with PayPal MCP when it executes); src/paypal-mcp.js is the MCP client
 src/copilot.js        the seller Copilot loop; src/proposals.js holds money actions until a human confirms
+src/auth.js           signed login cookies, one-time buyer codes, login lockout (node:crypto only)
+src/auth.js           signed login cookies, one-time buyer codes, login lockout (node:crypto only)
 src/server.js         HTTP server (Node built-ins only)
 web/                  React + Vite + TypeScript frontend source (devDependencies only)
 public/app/           the built frontend (committed, served by the Node server)
@@ -189,6 +200,10 @@ public/embed.js       the embeddable widget loader (vanilla JS)
 public/               the original pages (plain HTML, CSS and JS) and public/vendor/ for them
 src/agent-api.js      the open agent negotiation API
 test/                 unit and end-to-end tests
+scripts/hooks/        commit and edit guard scripts used by the Claude Code and git hooks
+.githooks/            pre-commit and commit-msg launchers (enable with core.hooksPath)
+docs/design-tokens.md colour roles, type, interaction and accessibility rules for the UI
+docs/design-tokens.md colour roles, type, interaction and accessibility rules for the UI
 ```
 
 ## AI tools used
@@ -200,6 +215,8 @@ test/                 unit and end-to-end tests
 
 ## Honest limitations
 
+- **Buyer sign-in is a demo, not production authentication.** No mail service is connected, so the one-time code is shown on screen (hide it with `BUYER_DEMO_CODES=false`). It proves nothing about who owns the email. Deals stay reachable by their private link either way, and the buyer's email is never shown on the public order page.
+- Login sessions are signed cookies (HMAC, `node:crypto`), 8 hours for the seller and 30 days for a buyer. Without `SESSION_SECRET` a random secret is made at start, so a restart signs everyone out.
 - Sandbox money only. No real payments are made.
 - Negotiation state is in memory and deals are stored in a local JSON file. A production version would use a database.
 - In demo mode the "AI" is scripted. It deliberately over-concedes in the first round so the guardrails visibly step in.

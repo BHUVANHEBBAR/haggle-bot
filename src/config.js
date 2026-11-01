@@ -63,6 +63,11 @@ const config = {
   get rateLimitMultiplier() { return Math.max(1, Number(e.RATE_LIMIT_MULTIPLIER || 1)); },
   get uiBase() { return e.UI_BASE || '/app/'; },
   get sellerKey() { return e.SELLER_KEY || 'change-me'; },
+  get sessionSecret() { return e.SESSION_SECRET || ''; },
+  // true behind a reverse proxy that sets x-forwarded-for (Render): then the client address is the first hop
+  get trustProxy() { return e.TRUST_PROXY === 'true'; },
+  // this is a sandbox-only demo with no mail service, so the one-time buyer code is shown on screen; set false to hide it
+  get buyerDemoCodes() { return e.BUYER_DEMO_CODES !== 'false'; },
   get dataDir() { return e.DATA_DIR || path.join(__dirname, '..', 'data'); },
   get persist() { return e.PERSIST !== 'false'; },
   get mockDuplicateWebhooks() { return e.MOCK_DUPLICATE_WEBHOOKS !== 'false'; },

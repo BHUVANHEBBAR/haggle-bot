@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef } from 'ag-grid-community';
 import { Download } from 'lucide-react';
@@ -9,6 +9,14 @@ import { gridTheme } from '../../lib/ag';
 import { usd } from '../../lib/utils';
 import { headers, type SellerDeal } from './api';
 import TranscriptDialog from './TranscriptDialog';
+
+// Phones get a card list: a six-column grid would hide the money buttons off screen.
+function useNarrow() {
+  const q = '(max-width: 719px)';
+  const [n, setN] = useState(() => typeof matchMedia === 'function' && matchMedia(q).matches);
+  useEffect(() => { const m = matchMedia(q); const h = () => setN(m.matches); m.addEventListener('change', h); return () => m.removeEventListener('change', h); }, []);
+  return n;
+}
 
 // Deals table (AG Grid Community): sorting, filtering, pagination, CSV export, and the money actions.
 export default function DealsGrid({ deals, sellerKey, onChanged }: { deals: SellerDeal[]; sellerKey: string; onChanged: () => void }) {
@@ -42,17 +50,9 @@ export default function DealsGrid({ deals, sellerKey, onChanged }: { deals: Sell
     } catch (e) { toast.error((e as Error).message); }
   }
 
-  const cols = useMemo<ColDef<SellerDeal>[]>(() => [
-    { headerName: 'Product', flex: 2, minWidth: 190, valueGetter: (p) => (p.data ? p.data.productName + (p.data.qty > 1 ? ` x${p.data.qty}` : '') : '') },
-    { headerName: 'Price', field: 'totalCents', width: 130, cellRenderer: (p: { data?: SellerDeal }) => p.data && (
-      <div><div className="num">{usd(p.data.totalCents)}</div><div className="text-[13px] leading-tight text-mute">list {usd(p.data.listTotalCents)}</div></div>) },
-    { headerName: 'Your floor', field: 'floorTotalCents', width: 130, valueFormatter: (p) => usd(p.value as number) },
-    { headerName: 'Source', field: 'source', width: 120, valueFormatter: (p) => (p.value === 'buy_now' ? 'Bought' : 'Haggled') },
-    { headerName: 'Status', field: 'status', width: 140, cellRenderer: (p: { value: string }) => <StatusPill status={p.value} /> },
-    { headerName: 'Actions', colId: 'actions', flex: 2, minWidth: 440, sortable: false, filter: false, cellRenderer: (p: { data?: SellerDeal }) => {
-      const x = p.data; if (!x) return null;
-      return (
-        <div className="flex flex-nowrap items-center gap-1.5">
+  const actions = (x: SellerDeal, wrap: boolean) => {
+    return (
+      <div className={wrap ? 'flex flex-wrap items-center gap-1.5' : 'flex flex-nowrap items-center gap-1.5'}>
           <Button variant="ghost" className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => setViewing(x)}>Details</Button>
           {x.status === 'authorized' && <>
             <Button className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => void act(x.id, 'capture')}>Accept job (capture)</Button>
@@ -65,8 +65,21 @@ export default function DealsGrid({ deals, sellerKey, onChanged }: { deals: Sell
             <Button variant="ghost" className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => void invoiceAction(x.id, 'refresh')}>Check with PayPal</Button>
             <Button variant="ghost" className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => void invoiceAction(x.id, 'cancel')}>Cancel invoice</Button>
           </>}
-        </div>
-      );
+      </div>
+    );
+  };
+
+  const narrow = useNarrow();
+  const cols = useMemo<ColDef<SellerDeal>[]>(() => [
+    { headerName: 'Product', flex: 2, minWidth: 190, valueGetter: (p) => (p.data ? p.data.productName + (p.data.qty > 1 ? ` x${p.data.qty}` : '') : '') },
+    { headerName: 'Price', field: 'totalCents', width: 130, cellRenderer: (p: { data?: SellerDeal }) => p.data && (
+      <div><div className="num">{usd(p.data.totalCents)}</div><div className="text-[13px] leading-tight text-mute">list {usd(p.data.listTotalCents)}</div></div>) },
+    { headerName: 'Your floor', field: 'floorTotalCents', width: 130, valueFormatter: (p) => usd(p.value as number) },
+    { headerName: 'Source', field: 'source', width: 120, valueFormatter: (p) => (p.value === 'buy_now' ? 'Bought' : 'Haggled') },
+    { headerName: 'Status', field: 'status', width: 140, cellRenderer: (p: { value: string }) => <StatusPill status={p.value} /> },
+    { headerName: 'Actions', colId: 'actions', flex: 2, minWidth: 440, sortable: false, filter: false, cellRenderer: (p: { data?: SellerDeal }) => {
+      const x = p.data; if (!x) return null;
+      return actions(x, false);
     } },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [sellerKey]);
@@ -96,11 +109,26 @@ export default function DealsGrid({ deals, sellerKey, onChanged }: { deals: Sell
           <Button type="button" variant="ghost" onClick={() => setInvoicing(null)}>Cancel</Button>
         </form>
       )}
+      {narrow ? (
+        <ul id="dealsList" aria-label="Deals" className="m-0 grid list-none gap-2.5 p-0">
+          {deals.filter((d) => !filter || `${d.productName} ${d.status}`.toLowerCase().includes(filter.toLowerCase())).map((d) => (
+            <li key={d.id} className="rounded-xl border border-line bg-card p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0"><div className="font-semibold">{d.productName}{d.qty > 1 ? ` x${d.qty}` : ''}</div>
+                  <div className="text-sm text-mute"><span className="num font-bold text-ink">{usd(d.totalCents)}</span> · list {usd(d.listTotalCents)} · {d.source === 'buy_now' ? 'Bought' : 'Haggled'}</div></div>
+                <StatusPill status={d.status} />
+              </div>
+              <div className="mt-2.5">{actions(d, true)}</div>
+            </li>
+          ))}
+        </ul>
+      ) : (
       <div id="dealsGrid" className="min-w-0">
         <AgGridReact<SellerDeal> ref={ref} theme={gridTheme} rowData={deals} columnDefs={cols} getRowId={(p) => p.data.id} domLayout="autoHeight"
           rowHeight={64} headerHeight={42} pagination paginationPageSize={8} paginationPageSizeSelector={false} suppressCellFocus
           defaultColDef={{ sortable: true, filter: true, resizable: true, cellStyle: { display: 'flex', alignItems: 'center' } }} />
       </div>
+      )}
     </>
   );
 }

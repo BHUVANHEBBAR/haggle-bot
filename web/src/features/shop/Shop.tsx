@@ -50,7 +50,7 @@ function ProductCard({ p, onHaggle, onBuy, busy }: { p: Product; onHaggle: (p: P
         <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
           {p.highlights.map((h) => <li key={h} className="inline-flex items-center gap-1 rounded-full bg-chip px-2.5 py-0.5 text-xs font-semibold"><Check size={12} className="text-ok" aria-hidden />{h}</li>)}
         </ul>
-        <div className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1">
+        <div className="mt-auto flex min-h-[64px] flex-wrap items-end justify-between gap-2 pt-1">
           <div>
             <div className="price num text-[28px] font-extrabold leading-none tracking-tight">{usd(p.listCents)}</div>
             <div className="mt-1 text-xs text-mute">list price, USD</div>

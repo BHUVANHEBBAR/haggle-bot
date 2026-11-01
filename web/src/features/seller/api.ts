@@ -20,10 +20,10 @@ export interface EvalReport {
   interventions: { priceClamped: number; messageReplaced: number; injectionBlocked: number; belowFloorRefused: number };
 }
 
-const KEY = 'sk';
-export const getKey = () => { try { return sessionStorage.getItem(KEY) || ''; } catch { return ''; } };
-export const setKey = (k: string) => { try { sessionStorage.setItem(KEY, k); } catch { /* storage may be blocked */ } };
-export const headers = (key: string) => ({ 'x-seller-key': key });
+// The seller signs in once; the server sets an HttpOnly session cookie, so no key is kept in the page.
+// Components still receive a "sellerKey" prop; SESSION means "use the cookie" (a real key would go in the old header).
+export const SESSION = 'session';
+export const headers = (key: string): Record<string, string> => (key && key !== SESSION ? { 'x-seller-key': key } : {});
 
 // Refreshes every 8 s, but not while the seller is typing in a field.
 export const useDashboard = (key: string) => useQuery({

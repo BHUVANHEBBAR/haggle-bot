@@ -26,6 +26,7 @@ npm-debug.log*
 Thumbs.db
 
 # --- local / agent artifacts ---
-.claude/
+.claude/*
+!.claude/settings.json
 Paypalhck.txt
 e2e-screens/

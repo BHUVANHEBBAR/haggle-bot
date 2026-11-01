@@ -40,7 +40,8 @@ function Row({ p, sellerKey, onSaved }: { p: SellerProduct; sellerKey: string; o
 export default function RulesTable({ products, sellerKey, onSaved }: { products: SellerProduct[]; sellerKey: string; onSaved: () => void }) {
   return (
     <Card>
-      <div className="overflow-x-auto">
+      <p className="mb-2 text-xs text-mute md:hidden">Swipe sideways to see every column.</p>
+      <div className="overflow-x-auto" role="region" aria-label="Your rules table, scrolls sideways" tabIndex={0}>
         <table id="products" className="w-full border-collapse text-sm">
           <thead>
             <tr>{['Product', 'List $', 'Cost $', 'Min margin %', 'Max discount %', 'Stock', 'Floor', ''].map((h) => (

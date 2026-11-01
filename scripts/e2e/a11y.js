@@ -27,7 +27,12 @@ const { ui, BASE, playwright, startServer, MOCK, negotiateToDeal, login } = requ
     await page.waitForSelector('#pay'); await audit('order page (review and pay)');
     await page.goto(ui('/battle')); await page.waitForFunction(() => document.querySelector('#product option')); await audit('battle');
     await page.goto(ui('/agents')); await audit('for agents');
-    await login(page); await page.waitForSelector('#dash:not([hidden])'); await page.waitForTimeout(1200); await audit('seller dashboard');
+    await page.goto(ui('/orders')); await page.getByRole('heading', { name: 'My orders' }).waitFor(); await audit('my orders (signed out)');
+    await page.getByRole('button', { name: 'Sign in with email' }).click(); await audit('buyer sign-in dialog');
+    await page.keyboard.press('Escape');
+    await page.goto(ui('/seller')); await page.waitForSelector('#login'); await audit('seller sign-in');
+    await login(page); await page.waitForSelector('#dash:not([hidden])'); await page.waitForTimeout(1200); await audit('seller dashboard (overview)');
+    for (const t of ['Deals', 'Money & PayPal', 'Pricing rules', 'Insights', 'Settings']) { await page.getByRole('tab', { name: t }).click(); await page.waitForTimeout(800); await audit('seller tab: ' + t); }
     await ctx.close();
   }
   await browser.close(); srv.stop();

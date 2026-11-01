@@ -108,6 +108,7 @@ async function respond(session, buyerTextRaw) {
       listTotalCents: product.listCents * qty, costTotalCents: product.costCents * qty,
       floorTotalCents: floorUnit * qty, currency: 'USD', payMode: product.payMode,
       messages: session.messages, transcript: session.history.slice(), source: 'negotiated',
+      buyerEmail: session.buyerEmail || null,
     });
     session.dealId = deal.id;
     store.logEvent('deal_agreed', { dealId: deal.id, productName: product.name, totalCents: deal.totalCents, listTotalCents: deal.listTotalCents });
