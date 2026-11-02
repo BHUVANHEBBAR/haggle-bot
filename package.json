@@ -10,6 +10,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test test/*.test.js",
-    "eval": "node scripts/eval.js"
+    "eval": "node scripts/eval.js",
+    "voice": "node scripts/voice-check.js"
   }
 }

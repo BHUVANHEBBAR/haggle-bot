@@ -23,7 +23,7 @@ Record your screen with a free tool (OBS, or the Windows Game Bar `Win+G`). Read
 2. Show the log: "AI proposed $35.50; guardrail used $44.50".
 3. Show the rules table and the floor column.
 4. Click "Run safety check": "hundreds of hostile buyers and a deliberately misbehaving AI, zero rules broken."
-5. Optional, about 15 seconds (character): Pricing rules > **Haggler personality**, choose **Market trader** for the lamp, open the lamp chat: "same rules, a different voice and pace, and the floor line on the playground does not move."
+5. Optional, about 15 seconds (character): Pricing rules > **Haggler personality**, choose **Market trader** for the tote (it has a wide discount range, so the pace is visible; the lamp only allows about 8%), open the tote chat: "same rules, a different voice and pace, and the floor line on the playground does not move."
 
 **PayPal is the source of truth (add about 25 seconds; shorten the buyer flow to make room)**
 1. After paying, open the dashboard > **PayPal check** > Reconcile: "PayPal itself confirms $41.50 received, fetched by capture ID."

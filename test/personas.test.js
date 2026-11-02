@@ -167,3 +167,54 @@ test('the offline brain speaks in each voice and a deal records which personalit
   }
   await j('PUT', '/api/seller/products/tote', { persona: 'friendly' }, seller);
 });
+
+test('the prompt carries each personality\'s style card, reacts to the offer, and never contains the floor', async () => {
+  const llm = require('../src/llm');
+  const seller = require('../src/agents/seller');
+  const real = llm.completeJson;
+  const seen = [];
+  llm.completeJson = async (req) => { seen.push(req); return { json: { price: 40, message: 'ok' }, provider: 'stub', fellBack: false }; };
+  try {
+    const tote = store.getProduct('tote');
+    const floorText = (g.effectiveFloorCents(tote, 1) / 100).toFixed(2);
+    for (const key of personas.KEYS) {
+      const session = { id: 'p' + key, productId: 'tote', qty: 1, round: 0, history: [], messages: 0, askCents: null, status: 'open', persona: key };
+      await seller.respond(session, 'Would you take $15?');
+      const req = seen[seen.length - 1];
+      assert.ok(req.system.includes(personas.voiceFor(key)), `${key}: style card is in the system prompt`);
+      assert.ok(req.system.indexOf('Rules you must follow') < req.system.indexOf('STYLE'), 'rules come before style');
+      assert.equal(req.temperature, personas.temperatureFor(key));
+      assert.match(req.user, /The buyer offered \$15\.00, which is far below your current ask of \$48\.00/);
+      assert.match(req.user, new RegExp(`VOICE: ${personas.get(key).label}`));
+      assert.ok(!/Be warm/.test(req.user + req.system), `${key}: no hard-coded warmth`);
+      assert.ok(!req.system.includes(floorText) && !req.user.includes('$' + floorText), `${key}: the floor never reaches the model`);
+      assert.ok(!/floor|margin|cost|reserve|wholesale/i.test(personas.voiceFor(key) + req.user), `${key}: no leaky words in the style card or task`);
+    }
+  } finally { llm.completeJson = real; }
+});
+
+test('example replies in every style card pass the reply checks once the placeholder is filled', () => {
+  for (const key of personas.KEYS) {
+    const c = personas.style(key);
+    assert.ok(c.examples.length >= 2 && c.maxWords > 0 && c.temperature > 0 && c.temperature <= 1);
+    for (const e of c.examples) {
+      assert.ok(e.includes('<price>'), `${key}: example uses the placeholder`);
+      const filled = e.replace('<price>', '$42.00');
+      assert.ok(g.sanitizeReply(filled, [4200]), `${key}: "${filled}" would be rejected`);
+      assert.ok(filled.split(/\s+/).length <= c.maxWords, `${key}: example fits its own word budget`);
+    }
+  }
+  assert.ok(!personas.style('firm').examples.some((e) => e.includes('!')), 'Firm never uses exclamation marks');
+});
+
+test('the personalities endpoint shows the real asking prices for a product, seller-only', async () => {
+  const r = await j('GET', '/api/seller/personas?productId=tote', null, seller);
+  const by = Object.fromEntries(r.json.personas.map((p) => [p.key, p]));
+  assert.equal(by.firm.ladder.length, 5);
+  assert.ok(by.firm.ladder[0] > by.friendly.ladder[0] && by.friendly.ladder[0] > by.generous.ladder[0], 'round 1: Firm > Friendly > Generous');
+  assert.ok(by.generous.ladder.every((c) => c >= g.effectiveFloorCents(store.getProduct('tote'), 1)), 'never below the lowest price');
+  assert.ok(r.json.rangePct > 20);
+  const lamp = await j('GET', '/api/seller/personas?productId=lamp', null, seller);
+  assert.ok(lamp.json.rangePct < 12, 'the one-of-a-kind lamp has a narrow range');
+  assert.equal((await j('GET', '/api/seller/personas?productId=tote')).status, 401);
+});

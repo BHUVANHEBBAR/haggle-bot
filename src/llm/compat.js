@@ -3,7 +3,7 @@ const config = require('../config');
 const { httpError, describe } = require('./http-error');
 
 // Any OpenAI-compatible chat endpoint: OpenRouter, Together, Mistral, a local Ollama (no key needed), and so on.
-async function complete({ system, user }) {
+async function complete({ system, user, temperature }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), config.llmTimeoutMs);
   const headers = { 'content-type': 'application/json' };
@@ -15,7 +15,7 @@ async function complete({ system, user }) {
       headers,
       body: JSON.stringify({
         model: config.compatModel,
-        temperature: 0.7,
+        temperature: temperature ?? 0.7,
         max_tokens: 400,
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],

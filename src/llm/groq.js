@@ -16,12 +16,12 @@ let substitute = null; // { model, at } used when the configured model is not av
 const missing = (err) => err && (err.status === 404 || /does not exist|model_not_found|decommissioned|not found/i.test(err.message));
 const modelInUse = () => (substitute && Date.now() - substitute.at < DISCOVERY_TTL_MS ? substitute.model : config.groqModel);
 
-async function call(model, { system, user, schema }, useSchema) {
+async function call(model, { system, user, schema, temperature }, useSchema) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), config.llmTimeoutMs);
   const body = {
     model,
-    temperature: 0.7,
+    temperature: temperature ?? 0.7,
     ...(REASONING.test(model) ? { reasoning_effort: 'low', max_completion_tokens: 1200 } : { max_tokens: 400 }),
     response_format: useSchema && schema && STRICT_SCHEMA.test(model)
       ? { type: 'json_schema', json_schema: { name: 'reply', strict: true, schema: toJsonSchema(schema) } }

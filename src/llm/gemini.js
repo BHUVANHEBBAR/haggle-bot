@@ -3,7 +3,7 @@ const config = require('../config');
 const { httpError, describe } = require('./http-error');
 
 // schema (optional): a Gemini responseSchema so the model must return exactly the JSON fields we read.
-async function complete({ system, user, schema }) {
+async function complete({ system, user, schema, temperature }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), config.llmTimeoutMs);
@@ -15,7 +15,7 @@ async function complete({ system, user, schema }) {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 800, responseMimeType: 'application/json', ...(schema ? { responseSchema: schema } : {}) },
+        generationConfig: { temperature: temperature ?? 0.7, maxOutputTokens: 800, responseMimeType: 'application/json', ...(schema ? { responseSchema: schema } : {}) },
       }),
     });
     if (!res.ok) throw await httpError('Gemini', res);

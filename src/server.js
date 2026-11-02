@@ -467,9 +467,13 @@ route('POST', '/api/seller/simulate', async (req) => {
 });
 
 // ---------- haggler personalities (seller-only: includes the pacing the buyer never sees) ----------
-route('GET', '/api/seller/personas', async (req) => {
+route('GET', '/api/seller/personas', async (req, m, url) => {
   requireSeller(req);
-  return { status: 200, body: { default: personas.DEFAULT, personas: personas.catalog() } };
+  // with ?productId= each personality also shows the real asking prices it would use on that product (seller-only)
+  const product = store.getProduct(url.searchParams.get('productId') || '');
+  const floor = product ? g.effectiveFloorCents(product, 1) : null;
+  const list = personas.catalog().map((p) => (product ? { ...p, ladder: [1, 2, 3, 4, 5].map((r) => g.counterCents(product, 1, r, p.progress)) } : p));
+  return { status: 200, body: { default: personas.DEFAULT, personas: list, ...(product ? { rangePct: Math.round(((product.listCents - floor) / product.listCents) * 1000) / 10, listCents: product.listCents } : {}) } };
 });
 
 // ---------- funnel analytics ----------

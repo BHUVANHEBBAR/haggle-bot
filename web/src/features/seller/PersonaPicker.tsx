@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '../../api/client';
 import { Button, Card } from '../../components/ui';
-import { cn } from '../../lib/utils';
+import { cn, usd } from '../../lib/utils';
 import { headers, type SellerProduct } from './api';
 
-export interface PersonaInfo { key: string; label: string; emoji: string; blurb: string; progress: number[]; sample: string; opening: string }
+export interface PersonaInfo { key: string; label: string; emoji: string; blurb: string; progress: number[]; sample: string; opening: string; ladder?: number[] }
 
 // A tiny chart of how much of the discount range the assistant gives up each round (0 = list price, 100 = your lowest price).
 function Pace({ progress }: { progress: number[] }) {
@@ -22,8 +22,12 @@ function Pace({ progress }: { progress: number[] }) {
 export default function PersonaPicker({ products, sellerKey, onChanged }: { products: SellerProduct[]; sellerKey: string; onChanged: () => void }) {
   const [pid, setPid] = useState(products[0]?.id ?? '');
   const [busy, setBusy] = useState(false);
-  const { data } = useQuery({ queryKey: ['personas', sellerKey], queryFn: () => api<{ default: string; personas: PersonaInfo[] }>('/api/seller/personas', { headers: headers(sellerKey) }), staleTime: 300_000 });
   const product = products.find((p) => p.id === pid) ?? products[0];
+  const { data } = useQuery({
+    queryKey: ['personas', sellerKey, product?.id, product?.listCents, product?.floorCents],
+    queryFn: () => api<{ default: string; rangePct?: number; personas: PersonaInfo[] }>(`/api/seller/personas?productId=${encodeURIComponent(product!.id)}`, { headers: headers(sellerKey) }),
+    enabled: !!product, staleTime: 60_000,
+  });
   if (!data || !product) return null;
   const current = product.persona ?? data.default;
 
@@ -47,6 +51,9 @@ export default function PersonaPicker({ products, sellerKey, onChanged }: { prod
         </select>
         <Button variant="ghost" disabled={busy} onClick={() => void choose(current, true)}>Use this personality for all products</Button>
       </div>
+      {data.rangePct !== undefined && data.rangePct < 12 && (
+        <p id="personaNarrow" className="mb-3 rounded-lg bg-warn-soft p-2.5 text-[13px] text-warn">This product only allows about {data.rangePct}% off, so personalities change the tone far more than the price. Try the tote to see the pace clearly.</p>
+      )}
       <div role="radiogroup" aria-label={`Personality for ${product.name}`} className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,210px),1fr))] gap-3">
         {data.personas.map((p) => {
           const on = p.key === current;
@@ -56,6 +63,7 @@ export default function PersonaPicker({ products, sellerKey, onChanged }: { prod
               <span className="flex items-center justify-between gap-2"><span className="text-base font-bold"><span aria-hidden>{p.emoji}</span> {p.label}</span>{on && <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-bold text-brand-ink">Selected</span>}</span>
               <span className="text-[13px] text-mute">{p.blurb}</span>
               <span className="flex items-center gap-2 text-brand"><span className="text-xs font-semibold text-mute">Pace</span><Pace progress={p.progress} /></span>
+              {p.ladder && <span className="text-[12px] text-mute"><span className="font-semibold">Asks by round: </span><span className="num">{p.ladder.map((c) => usd(c)).join(' → ')}</span></span>}
               <span className="text-[13px] italic"><span className="not-italic text-xs font-semibold text-mute">Sample reply: </span>&ldquo;{p.sample}&rdquo;</span>
             </button>
           );
