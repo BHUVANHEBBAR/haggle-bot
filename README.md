@@ -2,7 +2,62 @@
 
 **An AI haggling agent for small sellers. The AI negotiates the price, plain code enforces the seller's limits, and PayPal collects the payment at the agreed price.**
 
-Built for the PayPal AI Hackathon (PayPal Sandbox + AI).
+Built for the **PayPal AI Hackathon** (PayPal Sandbox + AI). Sandbox only: no real money is ever moved.
+
+> **Judges: start with [JUDGES.md](JUDGES.md)** (run it in under 2 minutes, a 3-minute tour, what is real vs simulated). The demo video and the live demo are linked from the Devpost submission.
+
+## Try it in 60 seconds
+
+```bash
+git clone https://github.com/BHUVANHEBBAR/haggle-bot.git
+cd haggle-bot
+node src/server.js        # Node 20+; nothing to install
+# open http://localhost:3000/app/    (seller console password locally: change-me)
+```
+
+No account, no API key, no `npm install`. Demo mode uses a simulated PayPal and an offline AI, with the same code paths as the real thing. To use your own PayPal Sandbox keys, see [JUDGES.md](JUDGES.md#4-optional-use-your-own-paypal-sandbox).
+
+## Why PayPal is central
+
+PayPal is where the money, the proof and the safety net live, not just the last button:
+
+- **Pays** the negotiated price through Orders v2 (capture, or authorize-then-capture for services), with refunds, voids and idempotent requests.
+- **Confirms**: webhooks are verified through PayPal's signature API, and a **Reconcile** button fetches every payment from PayPal by its ID to prove the money arrived.
+- **Records**: each deal keeps a money trail of real PayPal order, capture and refund IDs and `debug_id`s.
+- **Acts, with a human**: the seller Copilot uses PayPal tools but can only *propose* a refund or capture; PayPal executes it only after the seller presses Confirm.
+- **Invoices**: the seller can send a PayPal invoice for an agreed deal (create, send and cancel verified on the real sandbox).
+
+Details, with where each piece lives in the code, are in [PayPal in HaggleBot](#paypal-in-hagglebot), including what was *not* verified live.
+
+## How it maps to the judging criteria
+
+| Criterion | Where to see it |
+|---|---|
+| **Technological Implementation** | Zero-dependency Node server; PayPal Orders v2, Payments v2, webhooks, Invoicing, reconciliation; guardrails in pure code; 160 tests, a hostile-input safety eval (0 violations), 30 browser flows |
+| **Design** | React + Tailwind UI with a seller console and buyer shop; light and dark; works at 375px; axe accessibility audit has no serious or critical issues (`docs/ux-audit.md`) |
+| **Potential Impact** | Small sellers who sell internationally lose time and margin to "best price?" messages; HaggleBot answers 24/7 inside their limits; embeddable on any site; open agent API |
+| **Innovation** | "The AI proposes, the code decides": the AI never sees the floor price; agent-vs-agent battle with a manipulator; human-confirmed PayPal Copilot; selectable haggler personalities |
+| **Presentation** | [JUDGES.md](JUDGES.md), [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and an honest-limitations section instead of overclaiming |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  B[Buyer chat or shopper agent] --> G{{"guardrails.js<br/>(code decides: accept, counter, walk away, price range)"}}
+  G --> A[AI words the reply<br/>never sees the floor]
+  A --> S[Code re-checks reply<br/>clamps price, blocks leaks]
+  S --> B
+  G -->|agreed price stored on the server| D[(Deal)]
+  D --> P[PayPal Sandbox<br/>Orders v2 capture / authorize]
+  P --> W[Signed webhooks]
+  W --> D
+  D --> R[Reconcile with PayPal<br/>money trail]
+  C[Seller Copilot] -.proposes refund/capture.-> H[Seller presses Confirm] --> P
+```
+
+## Built during the submission period
+
+HaggleBot was built for this hackathon during the submission period. The repository history was condensed before submission, so it shows a few large commits instead of every step. The work, in short: the guardrail engine and safety eval; the PayPal Sandbox integration (orders, authorize/capture, refunds, webhooks, invoicing, reconciliation, Copilot); the React shop and seller console; buyer and seller sign-in; haggler personalities; the open agent API and embeddable widget; and the Render blueprint.
 
 ## The problem
 
@@ -53,10 +108,10 @@ All of this is in `src/paypal.js` and `src/payments.js`:
 Requires **Node.js 20 or newer**. There is nothing to `npm install`: the server uses only Node built-ins, and the few browser libraries are vendored in `public/vendor/` (see `THIRD_PARTY_NOTICES.md`), so there is no CDN either.
 
 ```bash
-git clone <this repo>
+git clone https://github.com/BHUVANHEBBAR/haggle-bot.git
 cd haggle-bot
 node src/server.js
-# open http://localhost:3000
+# open http://localhost:3000/app/
 ```
 
 With no configuration it runs in **demo mode**:
@@ -162,21 +217,13 @@ The seller picks how the assistant talks, per product (Seller console > Pricing 
 
 What it never changes: the floor. `effectiveFloorCents` and `enforcePrice` still decide, the AI never sees the floor, every reply still passes `sanitizeReply`, and a chat keeps the personality it started with. `npm run eval` runs every personality through the same hostile treatment (100 negotiations each), and `test/personas.test.js` sweeps every personality, product, round and offer to show nothing is accepted or countered below the floor. Insights shows deals and average discount per personality. In the simulated demo the voices come from the offline brain (canned lines). With a real model, a **style card** steers it: character, what to do and avoid, a word limit, two example replies and a per-personality temperature, plus a code-written line saying how the buyer's offer compares with the current ask (never the floor). Live models vary, so `npm run voice` prints each personality's replies to scripted buyers with simple metrics (needs a live key; it never prints keys). Products with a narrow discount range (the one-of-a-kind lamp allows about 8%) change tone far more than price; the picker shows each personality's real asking prices for the chosen product, and the tote shows the pace best.
 
-## Guard rails for contributors (hooks)
-
-Two layers enforce the project's own rules before a commit leaves the machine: no Claude co-author line (commits are authored by the owner only), no secrets in changed files, tests and type-check pass, and the committed `public/app/` is not older than `web/src`.
-
-- **Claude Code hooks** (`.claude/settings.json`, scripts in `scripts/hooks/`): block a bad `git commit`, deny edits to `.env` and commands that print secrets, deny force-push and ask before any push, and type-check a file right after it is edited.
-- **Git hooks** (`.githooks/`, for commits made by hand): enable once with `git config core.hooksPath .githooks`. Set `ALLOW_COAUTHOR=1` to allow a co-author trailer for one commit.
-- The scripts never print a secret value: only the file name and the rule that matched. `test/hooks.test.js` covers them.
-
 ## Proof that the guardrails hold
 
 `npm run eval` throws hundreds of seeded negotiations at the real seller pipeline: hostile buyers (lowballs, offers a cent under the floor, prompt injections, odd amounts) and a deliberately hostile "AI" (over-concedes, leaks internals, invents prices, returns junk). It checks, independently of the production code, that no deal is below the floor, nothing leaks, and no unapproved number is quoted. The seller dashboard has a **Safety check** card that runs it on demand. A test also sabotages the guardrails on purpose to prove the eval can fail.
 
 ## Deploy (Render)
 
-`render.yaml` is a Blueprint for a free Render web service (no build step). Set the secrets in the Render dashboard, then set `BASE_URL` to the service URL. A public URL also lets PayPal deliver real sandbox webhooks to `/api/paypal/webhook`.
+`render.yaml` is a Blueprint for a free Render web service (no build step; the free tier sleeps when idle, so the first load takes 30-60 seconds). Set the secrets in the Render dashboard (never in the repository), then set `BASE_URL` to the service URL. A public URL also lets PayPal deliver real sandbox webhooks to `/api/paypal/webhook`.
 
 ## Tests
 
@@ -185,6 +232,14 @@ npm test
 ```
 
 160 tests, no dependencies (`node:test`), plus 30 browser flows (`scripts/e2e/`), a live-sandbox proof script (`scripts/e2e/sandbox-paypal.js`) and an axe-core accessibility audit (`scripts/e2e/a11y.js`). They also cover the retry/circuit-breaker logic, the alternate AI provider, structured output and the safety eval. They cover the price rules (including a sweep proving no offer below the floor is ever accepted), an AI that tries to over-concede, prompt injection, the full simulated PayPal capture, declined card and retry, authorize/capture/void, refunds, webhook idempotency, forged webhooks, path traversal, and the real PayPal and Gemini client code against a stubbed network (headers, order body, retries, idempotency keys, token caching).
+
+## Guard rails for contributors (hooks)
+
+Two layers enforce the project's own rules before a commit leaves the machine: no Claude co-author line (commits are authored by the owner only), no secrets in changed files, tests and type-check pass, and the committed `public/app/` is not older than `web/src`.
+
+- **Claude Code hooks** (`.claude/settings.json`, scripts in `scripts/hooks/`): block a bad `git commit`, deny edits to `.env` and commands that print secrets, deny force-push and ask before any push, and type-check a file right after it is edited.
+- **Git hooks** (`.githooks/`, for commits made by hand): enable once with `git config core.hooksPath .githooks`. Set `ALLOW_COAUTHOR=1` to allow a co-author trailer for one commit.
+- The scripts never print a secret value: only the file name and the rule that matched. `test/hooks.test.js` covers them.
 
 ## Project layout
 
@@ -202,7 +257,6 @@ src/paypal-tools.js   the Copilot's PayPal tools (REST, with PayPal MCP when it 
 src/copilot.js        the seller Copilot loop; src/proposals.js holds money actions until a human confirms
 src/personas.js       haggler personalities: voice and pacing presets (never the floor)
 src/auth.js           signed login cookies, one-time buyer codes, login lockout (node:crypto only)
-src/auth.js           signed login cookies, one-time buyer codes, login lockout (node:crypto only)
 src/server.js         HTTP server (Node built-ins only)
 web/                  React + Vite + TypeScript frontend source (devDependencies only)
 public/app/           the built frontend (committed, served by the Node server)
@@ -213,14 +267,16 @@ test/                 unit and end-to-end tests
 scripts/hooks/        commit and edit guard scripts used by the Claude Code and git hooks
 .githooks/            pre-commit and commit-msg launchers (enable with core.hooksPath)
 docs/design-tokens.md colour roles, type, interaction and accessibility rules for the UI
-docs/design-tokens.md colour roles, type, interaction and accessibility rules for the UI
+docs/ux-audit.md     UX and accessibility audit notes
+scripts/voice-check.js live check of the five haggler voices (needs an AI key)
+JUDGES.md             the judges' guide; SECURITY.md describes how secrets and money are protected
 ```
 
 ## AI tools used
 
-- **Claude** (Anthropic), via Claude Code, to design and write this codebase.
+- **Claude** (Anthropic), via Claude Code, to design and write this codebase, with the PayPal plugin for Claude Code (its doctor check was run against the codebase).
 - **PayPal's remote MCP server** (46 tools discovered over SSE with plain `fetch`; see "PayPal in HaggleBot" for what executes and what does not).
-- **At runtime:** Google Gemini (Flash), Groq (Llama) or any OpenAI-compatible model, selectable by configuration, or the offline scripted brain.
+- **At runtime:** Google Gemini (Flash), Groq (default `openai/gpt-oss-120b`) or any OpenAI-compatible model, selectable by configuration, or the offline scripted brain.
 - **Open-source UI libraries** (vendored, MIT/ISC): AG Grid Community and AG Charts Community for the seller dashboard and charts, canvas-confetti. See `THIRD_PARTY_NOTICES.md`.
 
 ## Honest limitations
