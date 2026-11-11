@@ -32,7 +32,7 @@ Node.js 20+ with **zero npm dependencies** on the server (`node:test` for tests)
 AI tools used: Claude Code (development, tests, review), PayPal's developer docs, MCP server and Claude Code plugin (`/paypal:doctor`), and at runtime Gemini and Groq models for the negotiation wording.
 
 ## Proof it holds
-`npm test` (179 tests, no dependencies, including a sweep showing no offer below the floor is ever accepted), `npm run eval` (500 hostile negotiations and a deliberately hostile AI: 0 violations), 32 browser flows, and an optional AI injection check that can only add flags (measured on a small sample; see the README).
+`npm test` (206 tests, no dependencies, including a sweep showing no offer below the floor is ever accepted), `npm run eval` (500 hostile negotiations and a deliberately hostile AI: 0 violations), 33 browser flows, an off-topic/spam/abuse filter that runs in code before the AI (code questions, gibberish and abuse never reach the model), and an optional AI injection check that can only add flags (measured on a small sample; see the README).
 
 ## Challenges
 Making a language model sound like five distinct personalities without ever letting it move a price; keeping a free-tier model rate limit from breaking the demo (automatic fallback, labelled); and being exact about what was verified live versus simulated.

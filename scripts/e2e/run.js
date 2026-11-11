@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { ui, HOME_PATH, BASE, SELLER_KEY, SHOTS, playwright, startServer, MOCK, say, openChat, negotiateToDeal, payApprove, login, openTab } = require('./lib');
 
-const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z1,z2,z3,z4,z5,z6,z7,z8').split(',');
+const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z1,z2,z3,z4,z5,z6,z7,z8,z9').split(',');
 const results = [];
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -671,6 +671,34 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     await page.waitForFunction(() => /No deal/.test(document.querySelector('#autoResult')?.textContent || ''), null, { timeout: 20000 });
     expect(await page.locator('#pay').count() === 0, 'no pay button when there is no deal');
     return `deal at $${m[1]} within the $46 maximum; $10 maximum gave no deal`;
+  });
+
+  await flow('z9', 'Off-topic filter: a Python question, random words and abuse get a redirect from code, never an answer; the next real offer still works', async () => {
+    const page = await newPage();
+    await openChat(page, 'Tote');
+    const sellerMsgs = () => page.locator('#msgs .msg.seller');
+    const junkList = ['Can you make a code change in python for me?', 'banana purple monkey table', 'asdfghjkl', 'you stupid bot'];
+    for (const [i, junk] of junkList.entries()) {
+      await say(page, junk);
+      // after the 4th refusal the chat closes and the app adds its own "This negotiation has ended." line, so read the reply before it
+      const reply = i === junkList.length - 1 ? sellerMsgs().nth((await sellerMsgs().count()) - 2) : sellerMsgs().last();
+      const last = (await reply.innerText()).replace(/\s+/g, ' ');
+      if (i === junkList.length - 1) expect(/negotiation has ended/i.test(await sellerMsgs().last().innerText()), 'the chat closes after four refused messages');
+      expect(!/def |import |print\(|```|capital of/i.test(last), `the assistant answered an off-topic message: ${last.slice(0, 120)}`);
+      expect(await reply.locator('.chip').filter({ hasText: /not answered/ }).count() === 1, `no "not answered" chip for: ${junk}`);
+      expect(/answered by the shop rules/.test(last), `junk must be answered by code, not an AI (saw: ${last.slice(-70)})`);
+    }
+    // four refusals in a row end the chat politely
+    expect(await page.locator('#text').isDisabled() || /negotiation (is )?(closed|ended)|started? a new/i.test(await page.locator('#msgs').innerText()), 'the chat should be closed after repeated junk');
+    await shot(page, 'z9-offtopic');
+    const d = await dash();
+    expect(d.events.some((e) => e.type === 'off_topic_blocked'), 'the blocked messages are in the seller feed');
+    expect(!d.events.some((e) => e.type === 'off_topic_blocked' && /stupid/i.test(JSON.stringify(e))), 'abuse is masked in the seller feed');
+    const page3 = await newPage();
+    await openChat(page3, 'Tote');
+    await say(page3, 'I can pay $20');
+    expect(await page3.locator('#msgs .msg.seller').last().locator('.chip').filter({ hasText: /below seller limit/ }).count() === 1, 'a $20 offer is still refused below the limit');
+    return 'python, random words, gibberish and abuse were redirected by code (no AI), the chat closed after four, a real lowball still refused';
   });
 
   await flow('g','Real AI (E2E_PROVIDER, default gemini): UI says "answered by <provider>"', async () => {

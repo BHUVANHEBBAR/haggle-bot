@@ -197,6 +197,53 @@ function fallbackLine(key, d, name, q = 1) {
   return f.chat(c);
 }
 
+// ---------- redirect lines: what the assistant says when code (src/topic.js) refuses a message ----------
+// No model is called for these, so they cannot be talked around. They never contain a price, a limit or an internal word.
+// kind: off (off-topic or gibberish) | code | abuse | foreign | end (too many refused messages in a row)
+const REDIRECTS = {
+  friendly: {
+    off: [({ name }) => `I can only help with the ${name}: its details, shipping or the price. Ask me about it or make an offer!`, ({ name }) => `That's outside what I can help with here. I'm glad to talk about the ${name} though. Want to make an offer?`],
+    code: [({ name }) => `I can't help with programming questions, I'm just the shop assistant for the ${name}. Happy to talk about the item or the price, though!`],
+    abuse: [({ name }) => `Let's keep things friendly. I'm happy to help with the ${name} whenever you're ready.`],
+    foreign: [({ name }) => `Sorry, I can only chat in English for now. Ask me about the ${name} or make an offer and I'll do my best.`],
+    end: [({ name }) => `I'll pause our chat here. If you'd like to talk about the ${name}, you're welcome to start a new conversation.`],
+  },
+  firm: {
+    off: [({ name }) => `That is not something I discuss. I can talk about the ${name}, shipping or the price.`],
+    code: [() => 'I do not answer programming questions. I only discuss this item and its price.'],
+    abuse: [() => 'Keep it civil and we can continue. I only discuss the item and its price.'],
+    foreign: [({ name }) => `I can only chat in English for now. Ask about the ${name} or make an offer.`],
+    end: [() => 'This chat is closed. You are welcome to start a new one about the item.'],
+  },
+  generous: {
+    off: [({ name }) => `Ha, that one is beyond me! I'm all about the ${name} though. Ask me anything about it, or tell me what you'd like to pay!`],
+    code: [({ name }) => `Coding questions are beyond me, I'm just here for the ${name}! Ask about the item or make an offer, I'd love that!`],
+    abuse: [({ name }) => `Let's keep it kind! I'd really love to help you with the ${name}, just say the word.`],
+    foreign: [({ name }) => `Sorry, I only speak English for now! Ask me about the ${name} or make an offer and I'll help.`],
+    end: [({ name }) => `I'll pause here for now! If you'd like to chat about the ${name}, pop back in with a new conversation.`],
+  },
+  playful: {
+    off: [({ name }) => `Ooh, a curveball! My talents stop at the ${name}, shipping and the price. Shall we haggle instead?`],
+    code: [({ name }) => `Alas, I speak fluent haggling, not code! Ask me about the ${name} or name your price.`],
+    abuse: [({ name }) => `Easy now! Let's keep the banter friendly and get back to the ${name}.`],
+    foreign: [({ name }) => `My English is all I've got for now! Ask me about the ${name} or name your price.`],
+    end: [({ name }) => `The curtain falls on this chat. If the ${name} still calls to you, start a fresh conversation!`],
+  },
+  trader: {
+    off: [({ name }) => `Ha! This stall sells the ${name}, friend, not answers to everything. Ask me about it or name your price.`],
+    code: [({ name }) => `Code? I only deal in goods, friend! The ${name} is what I sell. Name your price.`],
+    abuse: [({ name }) => `No need for that, friend. Let's talk about the ${name} like honest folk.`],
+    foreign: [({ name }) => `English only at this stall for now, friend. Ask about the ${name} or name your price.`],
+    end: [({ name }) => `I'm closing the shutters on this chat, friend. Come back with a fresh conversation about the ${name}.`],
+  },
+};
+const REDIRECT_KIND = { off_topic: 'off', gibberish: 'off', empty: 'off', code: 'code', abuse: 'abuse', foreign: 'foreign', end: 'end' };
+/** A canned in-voice reply for a refused message. `kind` is a topic.js kind or 'end'. */
+const redirectLine = (key, kind, name, seed = 0) => {
+  const t = REDIRECTS[isValid(key) ? key : DEFAULT];
+  return pick(t[REDIRECT_KIND[kind] || 'off'], seed)({ name });
+};
+
 // what the seller sees when choosing: includes pacing so the UI can draw it (never sent to buyers)
 const catalog = () => KEYS.map((k) => ({
   key: k, label: PERSONAS[k].label, emoji: PERSONAS[k].emoji, blurb: PERSONAS[k].blurb, progress: PERSONAS[k].progress.slice(),
@@ -207,4 +254,4 @@ const catalog = () => KEYS.map((k) => ({
 // what a buyer may see: who they are chatting with
 const publicHaggler = (key) => ({ key: isValid(key) ? key : DEFAULT, label: get(key).label, emoji: get(key).emoji });
 
-module.exports = { DEFAULT, KEYS, isValid, get, progressFor, voiceFor, style, temperatureFor, openingLine, line, fallbackLine, catalog, publicHaggler };
+module.exports = { DEFAULT, KEYS, isValid, get, progressFor, voiceFor, style, temperatureFor, openingLine, line, fallbackLine, redirectLine, catalog, publicHaggler };

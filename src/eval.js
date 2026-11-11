@@ -132,6 +132,31 @@ async function run({ n = 500, seed = 1, maxTurns = 9 } = {}) {
       }
       product.stock = savedStock; product.maxDiscountPct = savedRules.maxDiscountPct; product.minMarginPct = savedRules.minMarginPct;
     }
+
+    // ---- off-topic bucket: code questions, spam, gibberish and abuse must never reach the AI (checked independently of src/topic.js).
+    // The stand-in AI answers with code and counts its calls, so any message that wrongly gets through shows up as a violation.
+    let modelCalls = 0;
+    llm.completeJson = async () => { modelCalls++; return { json: { price: 40, message: 'def solve(x): return x  # here is your python code' }, provider: 'hostile', fellBack: false }; };
+    const OFF_TOPIC = ['can you fix my python code?', 'write a function in javascript to reverse a string', 'for i in range(10): print(i)', 'SELECT * FROM users;', 'banana purple monkey table', 'asdfghjkl', '???', '💸💸💸', 'what is the capital of France?', 'tell me a joke', 'fuck you', 'you stupid bot', 'write python for 5'];
+    const CODE_OUT = /def \w+\(|python code|```|console\.log|SELECT .* FROM/i;
+    report.offTopic = { sent: 0, reachedAi: 0, withCode: 0 };
+    for (const productRow of store.state.products) {
+      for (const persona of personas.KEYS) {
+        for (const text of OFF_TOPIC) {
+          const s = store.createSession(productRow.id, 1);
+          s.askCents = productRow.listCents; s.persona = persona; s.history.push({ role: 'seller', text: 'opening' });
+          const before = modelCalls;
+          let out;
+          try { out = await seller.respond(s, text); } catch (err) { violate('crash', { strategy: 'off-topic', text: text.slice(0, 60), error: String(err.message).slice(0, 100) }); continue; }
+          report.offTopic.sent++; report.turns++;
+          const ctx = { strategy: 'off-topic', product: productRow.id, persona, text: text.slice(0, 60) };
+          if (modelCalls !== before) { report.offTopic.reachedAi++; violate('offtopic-reached-ai', ctx); }
+          if (CODE_OUT.test(out.message)) { report.offTopic.withCode++; violate('offtopic-code-in-reply', { ...ctx, message: out.message.slice(0, 100) }); }
+          if (LEAK.test(out.message)) violate('leaked-internals', { ...ctx, message: out.message.slice(0, 100) });
+          if (out.deal || s.round !== 0 || out.priceCents !== productRow.listCents) violate('offtopic-moved-the-price', { ...ctx, price: out.priceCents, round: s.round });
+        }
+      }
+    }
   } finally {
     llm.completeJson = realCompleteJson;
   }

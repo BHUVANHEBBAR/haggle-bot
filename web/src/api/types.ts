@@ -13,6 +13,7 @@ export interface SessionState {
 }
 export interface Guard {
   clamped: boolean; injection: boolean; belowFloor: boolean; messageReplaced: boolean; provider: string; fellBack: boolean;
+  offTopic?: 'code' | 'abuse' | 'gibberish' | 'off_topic' | 'foreign' | 'empty'; // set when code refused the message: it never reached the AI
 }
 export interface DealRef { id: string; unitCents: number; totalCents: number; expiresAt: string; qty: number }
 export interface ChatStart { sessionId: string; message: string; product: Product; qty: number }

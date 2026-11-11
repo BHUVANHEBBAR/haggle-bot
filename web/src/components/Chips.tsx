@@ -5,6 +5,7 @@ import { cn } from '../lib/utils';
 export default function Chips({ guard, action }: { guard: Guard; action?: string }) {
   const c: { k: 'ok' | 'guard' | 'bad'; t: string }[] = [];
   if (guard.injection) c.push({ k: 'bad', t: 'Manipulation attempt ignored' });
+  if (guard.offTopic) c.push({ k: 'guard', t: guard.offTopic === 'abuse' ? 'Abusive message, not answered' : 'Off-topic, not answered' });
   if (guard.belowFloor) c.push({ k: 'guard', t: 'Offer below seller limit, refused' });
   if (guard.clamped) c.push({ k: 'guard', t: 'AI price corrected by guardrail' });
   if (guard.messageReplaced) c.push({ k: 'guard', t: 'AI reply replaced (unsafe wording)' });

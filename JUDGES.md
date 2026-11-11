@@ -52,7 +52,7 @@ The app talks only to `api-m.sandbox.paypal.com` and **refuses to start** with a
 ## 5. Verify the claims
 
 ```bash
-npm test         # 182 tests, no dependencies (node:test)
+npm test         # 206 tests, no dependencies (node:test)
 npm run eval     # 500 hostile negotiations: expect "PASS: 0 violations"
 npm run voice    # optional, needs a live AI key: prints each personality's replies
 ```

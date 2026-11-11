@@ -39,6 +39,7 @@ export function describeEvent(e: SellerEvent): string {
   const n = (k: string) => Number(e[k] ?? 0);
   const m: Record<string, () => string> = {
     injection_blocked: () => `Manipulation attempt ignored: "${s('text')}"`,
+    off_topic_blocked: () => `${s('kind') === 'trimmed' ? 'Junk around an offer was dropped' : `Off-topic message not answered (${s('kind').replace('_', '-')})`}: "${s('text')}"`,
     below_floor_refused: () => `Offer of ${usd(n('offer'))} refused (below your limit)`,
     price_clamped: () => `AI proposed ${usd(n('aiProposed'))}; guardrail used ${usd(n('used'))}`,
     payment_ok: () => `Payment OK (${s('status')}) for deal ${s('dealId')}`,
