@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { LogOut, Menu, Moon, Sun, User, X } from 'lucide-react';
+import { LogOut, Menu, Moon, Store, Sun, User, X } from 'lucide-react';
 import { useHealth } from '../hooks/useHealth';
 import { useTheme } from '../lib/theme';
 import { brainName, cn } from '../lib/utils';
@@ -83,6 +83,7 @@ function ShopHeader({ onSignIn }: { onSignIn: () => void }) {
         <NavLink to="/" end className={link}>Shop</NavLink>
         <NavLink to="/auto" className={link}>Auto-haggle</NavLink>
         <NavLink to="/orders" className={link}>My orders</NavLink>
+        <NavLink to="/seller" className={cn(link({ isActive: false }), 'sm:hidden')}>Seller console</NavLink>
         <details className="group relative">
           <summary className="cursor-pointer list-none rounded-full px-3 py-2 text-[15px] font-semibold text-navy-mute hover:bg-white/10 hover:text-white">Developers</summary>
           <div className="z-30 mt-1 flex min-w-[200px] flex-col rounded-xl border border-line bg-card p-1 shadow-card sm:absolute">
@@ -93,6 +94,7 @@ function ShopHeader({ onSignIn }: { onSignIn: () => void }) {
       </nav>
       <Badges />
       <div className="ml-auto flex items-center gap-2 sm:ml-0">
+      <NavLink to="/seller" aria-label="Seller console" className="hidden min-h-11 items-center justify-center gap-1.5 rounded-full bg-white px-3.5 font-bold text-navy no-underline hover:bg-white/90 sm:inline-flex"><Store size={16} aria-hidden />Seller</NavLink>
       <button type="button" className="inline-flex size-11 items-center justify-center rounded-full bg-white/10 text-white sm:hidden" aria-expanded={menu} aria-controls="main-nav" aria-label={menu ? 'Close menu' : 'Open menu'} onClick={() => setMenu(!menu)}>
         {menu ? <X size={20} aria-hidden /> : <Menu size={20} aria-hidden />}
       </button>
