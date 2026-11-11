@@ -76,6 +76,11 @@ test('webhook verification calls PayPal and trusts only SUCCESS', async () => {
   handler = (url) => url.includes('verify-webhook-signature') ? { status: 200, body: { verification_status: 'FAILURE' } } : tokenReply;
   assert.equal(await paypal.verifyWebhook(headers, JSON.stringify({ id: 'E1' })), false);
   assert.equal(await paypal.verifyWebhook(headers, 'not json'), false);
+  // the reason is recorded so a failing hosted webhook can be diagnosed
+  handler = (url) => url.includes('verify-webhook-signature') ? { status: 200, body: { verification_status: 'FAILURE' } } : tokenReply;
+  await paypal.verifyWebhook(headers, JSON.stringify({ id: 'E1' }));
+  assert.match(paypal.verifyWebhook.lastReason, /verification_status=FAILURE/);
+  assert.doesNotMatch(paypal.verifyWebhook.lastReason, /WH-TEST/);
 });
 
 test('Gemini client sends the key in a header and parses JSON; falls back to mock on failure', async () => {

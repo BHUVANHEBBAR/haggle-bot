@@ -242,9 +242,12 @@ async function cancelInvoice(id) {
 
 /** True only if PayPal says the signature of this webhook is valid. */
 async function verifyWebhook(headers, rawBody) {
-  if (!config.paypalWebhookId) return false;
+  // why the last check failed, for the owner's logs (never contains a key or the webhook id)
+  const fail = (reason) => { verifyWebhook.lastReason = reason; return false; };
+  verifyWebhook.lastReason = null;
+  if (!config.paypalWebhookId) return fail('PAYPAL_WEBHOOK_ID is not set on this server');
   let event;
-  try { event = JSON.parse(rawBody); } catch { return false; }
+  try { event = JSON.parse(rawBody); } catch { return fail('body is not JSON'); }
   const h = (k) => headers[k] || headers[k.toLowerCase()];
   try {
     const r = await request('POST', '/v1/notifications/verify-webhook-signature', {
@@ -254,8 +257,9 @@ async function verifyWebhook(headers, rawBody) {
         transmission_time: h('paypal-transmission-time'), webhook_id: config.paypalWebhookId, webhook_event: event,
       },
     });
-    return r.verification_status === 'SUCCESS';
-  } catch { return false; }
+    if (r.verification_status === 'SUCCESS') return true;
+    return fail(`PayPal answered verification_status=${String(r.verification_status).slice(0, 20)} (the webhook id on this server probably belongs to a different webhook or app)`);
+  } catch (err) { return fail(`PayPal's verify call failed (${err.issue || err.message || 'error'}, HTTP ${err.status || '?'})`.slice(0, 200)); }
 }
 
 module.exports = {
