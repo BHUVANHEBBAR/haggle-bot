@@ -33,7 +33,7 @@ Details, with where each piece lives in the code, are in [PayPal in HaggleBot](#
 
 | Criterion | Where to see it |
 |---|---|
-| **Technological Implementation** | Zero-dependency Node server; PayPal Orders v2, Payments v2, webhooks, Invoicing, reconciliation; guardrails in pure code; 179 tests, a hostile-input safety eval (0 violations), 32 browser flows |
+| **Technological Implementation** | Zero-dependency Node server; PayPal Orders v2, Payments v2, webhooks, Invoicing, reconciliation; guardrails in pure code; 182 tests, a hostile-input safety eval (0 violations), 32 browser flows |
 | **Design** | React + Tailwind UI with a seller console and buyer shop; light and dark; works at 375px; axe accessibility audit has no serious or critical issues (`docs/ux-audit.md`) |
 | **Potential Impact** | Small sellers who sell internationally lose time and margin to "best price?" messages; HaggleBot answers 24/7 inside their limits; embeddable on any site; open agent API |
 | **Innovation** | "The AI proposes, the code decides": the AI never sees the floor price; agent-vs-agent battle with a manipulator; human-confirmed PayPal Copilot; selectable haggler personalities |
@@ -242,7 +242,7 @@ Measured once on Nov 11, 2026 with Groq `openai/gpt-oss-120b` (a small sample, n
 npm test
 ```
 
-179 tests, no dependencies (`node:test`), plus 32 browser flows (`scripts/e2e/`), a live-sandbox proof script (`scripts/e2e/sandbox-paypal.js`) and an axe-core accessibility audit (`scripts/e2e/a11y.js`). They also cover the retry/circuit-breaker logic, the alternate AI provider, structured output and the safety eval. They cover the price rules (including a sweep proving no offer below the floor is ever accepted), an AI that tries to over-concede, prompt injection, the full simulated PayPal capture, declined card and retry, authorize/capture/void, refunds, webhook idempotency, forged webhooks, path traversal, and the real PayPal and Gemini client code against a stubbed network (headers, order body, retries, idempotency keys, token caching).
+182 tests, no dependencies (`node:test`), plus 32 browser flows (`scripts/e2e/`), a live-sandbox proof script (`scripts/e2e/sandbox-paypal.js`) and an axe-core accessibility audit (`scripts/e2e/a11y.js`). They also cover the retry/circuit-breaker logic, the alternate AI provider, structured output and the safety eval. They cover the price rules (including a sweep proving no offer below the floor is ever accepted), an AI that tries to over-concede, prompt injection, the full simulated PayPal capture, declined card and retry, authorize/capture/void, refunds, webhook idempotency, forged webhooks, path traversal, and the real PayPal and Gemini client code against a stubbed network (headers, order body, retries, idempotency keys, token caching).
 
 ## Guard rails for contributors (hooks)
 

@@ -34,6 +34,9 @@ function renderSteps(steps) {
   }).join('\n\n');
 }
 
+// a question about the account's money needs evidence from a tool; small talk ("hi", "what can you do?") does not
+const ASKS_FOR_FACTS = /transaction|payment|paid|refund|dispute|order|balance|sale|sold|captur|authori[sz]|hold|deal|invoice|revenue|money|confirm|\bpaypal\b.*\b(show|list|how many|any)\b/i;
+
 const preview = (v) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > 260 ? `${s.slice(0, 257)}...` : s; };
 
 /** One seller question. Returns { reply, toolCalls, proposals, llm }. Never executes a money action. */
@@ -45,12 +48,23 @@ async function ask({ message, history = [] }) {
   let tainted = false; let lastLlm = null; let reply = '';
   const convo = history.slice(-6).map((h) => `${h.role === 'seller' ? 'Seller' : 'Copilot'}: ${String(h.text).slice(0, 300)}`).join('\n');
 
+  let nudges = 0; // how many times the model was told to use a tool
   for (let i = 0; i < MAX_STEPS; i++) {
-    const user = [`TOOLS:\n${toolList()}`, convo ? `CONVERSATION SO FAR:\n${convo}` : '', `SELLER ASKS: ${q}`, steps.length ? `TOOL RESULTS SO FAR:\n${renderSteps(steps)}` : ''].filter(Boolean).join('\n\n');
+    const user = [`TOOLS:\n${toolList()}`, convo ? `CONVERSATION SO FAR:\n${convo}` : '', `SELLER ASKS: ${q}`, steps.length ? `TOOL RESULTS SO FAR:\n${renderSteps(steps)}` : '',
+      nudges && !steps.length ? 'YOUR LAST ANSWER USED NO TOOL. Facts about payments must come from a tool result: call the right tool now.' : ''].filter(Boolean).join('\n\n');
     const out = await llm.completeJson({ system: SYSTEM, user, meta: { task: 'copilot', message: q, steps: steps.map((s) => ({ tool: s.tool, args: s.args, ok: s.ok, result: s.modelResult })) } });
     lastLlm = { provider: out.provider, fellBack: out.fellBack, error: out.error || null };
     const j = out.json || {};
-    if (j.action !== 'tool' || !j.tool) { reply = String(j.message || '').trim(); break; }
+    if (j.action !== 'tool' || !j.tool) {
+      reply = String(j.message || '').trim();
+      // enforced in code, not just in the prompt: a claim about payments with no tool behind it is never shown as fact
+      if (!steps.length && ASKS_FOR_FACTS.test(q)) {
+        if (nudges < 2) { nudges++; reply = ''; continue; } // up to two retries, telling the model it must look it up
+        reply = 'I did not look that up in PayPal, so I will not answer from memory. Please ask again, or name the tool, for example "use the list_disputes tool".';
+        lastLlm = { ...lastLlm, unverified: true };
+      }
+      break;
+    }
 
     const key = `${j.tool}:${JSON.stringify(j.args || {})}`;
     if (seen.has(key)) { reply = 'I already looked that up. Here is what I found.'; break; } // loop guard

@@ -182,3 +182,36 @@ test('a long deal list is not cut off: the Copilot still finds the right deal am
   assert.equal(r.proposals.length, 1);
   assert.equal(r.proposals[0].dealId, target.id, 'the newest captured tote deal');
 });
+
+test('a factual answer with no tool behind it is never shown: one retry, then a refusal to answer from memory', async () => {
+  let calls = 0;
+  llm.completeJson = async () => { calls++; return { json: { action: 'final', message: 'Returned 10 transactions.' }, provider: 'groq', fellBack: false }; };
+  const r = await copilot.ask({ message: 'Show my recent PayPal transactions' });
+  assert.equal(calls, 3, "the model got exactly two nudges");
+  assert.deepEqual(r.toolCalls, []);
+  assert.ok(!/10 transactions/.test(r.reply), 'the invented figure is not shown');
+  assert.match(r.reply, /did not look that up/i);
+  assert.equal(r.llm.unverified, true);
+});
+
+test('the nudge works: a model that calls the tool on the retry gets its answer through, with the tool call on record', async () => {
+  let n = 0;
+  llm.completeJson = async (req) => {
+    n++;
+    if (n === 1) return { json: { action: 'final', message: 'You have 3 disputes.' }, provider: 'groq', fellBack: false };
+    const last = req.meta.steps.at(-1);
+    if (n === 2) assert.match(req.user, /USED NO TOOL/);
+    if (!last) return { json: { action: 'tool', tool: 'list_disputes', args: {} }, provider: 'groq', fellBack: false };
+    return { json: { action: 'final', message: 'No open disputes.' }, provider: 'groq', fellBack: false };
+  };
+  const r = await copilot.ask({ message: 'Do I have any disputes?' });
+  assert.equal(r.toolCalls.length, 1);
+  assert.equal(r.toolCalls[0].tool, 'list_disputes');
+  assert.equal(r.reply, 'No open disputes.');
+});
+
+test('small talk with no money facts is still allowed without a tool', async () => {
+  llm.completeJson = async () => ({ json: { action: 'final', message: 'Hello! Ask me about your PayPal payments.' }, provider: 'groq', fellBack: false });
+  const r = await copilot.ask({ message: 'hi' });
+  assert.equal(r.reply, 'Hello! Ask me about your PayPal payments.');
+});
