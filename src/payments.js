@@ -239,7 +239,9 @@ async function sellerCancelInvoice(dealId) {
 async function handleWebhook(headers, rawBody) {
   const ok = await client().verifyWebhook(headers, rawBody);
   if (!ok) {
-    store.logEvent('webhook_rejected', { reason: client().verifyWebhook.lastReason || 'bad signature' });
+    const reason = client().verifyWebhook.lastReason || 'bad signature';
+    store.logEvent('webhook_rejected', { reason });
+    console.log(`[webhook] rejected: ${reason}`); // shows in the host's application log
     return { status: 400, body: { ok: false, error: 'invalid signature' } };
   }
   let event;

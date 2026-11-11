@@ -45,7 +45,7 @@ export function describeEvent(e: SellerEvent): string {
     payment_declined: () => `Payment declined (${s('issue')}) for deal ${s('dealId')}. PayPal debug id: ${s('debugId') || 'n/a'}`,
     webhook_processed: () => `Webhook verified and applied: ${s('eventType')}`,
     webhook_duplicate: () => `Duplicate webhook ignored: ${s('eventType')}`,
-    webhook_rejected: () => 'Webhook rejected: signature check failed',
+    webhook_rejected: () => `Webhook rejected: ${s('reason') || 'signature check failed'}`,
     seller_captured: () => `You captured the held payment for deal ${s('dealId')}`,
     seller_voided: () => `You released the payment hold for deal ${s('dealId')}`,
     seller_refunded: () => `You refunded deal ${s('dealId')}`,
