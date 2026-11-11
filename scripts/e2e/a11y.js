@@ -26,6 +26,8 @@ const { ui, BASE, playwright, startServer, MOCK, negotiateToDeal, login } = requ
     await page.goto(ui('/')); await page.locator('.pcard', { hasText: 'Lamp' }).getByRole('button', { name: 'Buy now' }).click();
     await page.waitForSelector('#pay'); await audit('order page (review and pay)');
     await page.goto(ui('/battle')); await page.waitForFunction(() => document.querySelector('#product option')); await audit('battle');
+    await page.goto(ui('/auto')); await page.waitForSelector('#autoProduct option', { state: 'attached' }); await audit('auto-haggle');
+    await page.fill('#autoMax', '46'); await page.click('#autoGo'); await page.waitForSelector('#autoResult .notice, #autoResult #pay', { timeout: 20000 }).catch(() => {}); await audit('auto-haggle with a result');
     await page.goto(ui('/agents')); await audit('for agents');
     await page.goto(ui('/orders')); await page.getByRole('heading', { name: 'My orders' }).waitFor(); await audit('my orders (signed out)');
     await page.getByRole('button', { name: 'Sign in with email' }).click(); await audit('buyer sign-in dialog');

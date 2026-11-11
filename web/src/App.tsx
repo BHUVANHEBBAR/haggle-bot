@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import Shop from './features/shop/Shop';
 import OrderPage from './features/shop/OrderPage';
+import AutoHaggle from './features/shop/AutoHaggle';
 
 // Heavy pages (AG Grid / AG Charts) load only when visited.
 const Battle = lazy(() => import('./features/battle/Battle'));
@@ -21,6 +22,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<Shop />} />
           <Route path="order/:id" element={<OrderPage />} />
+          <Route path="auto" element={<AutoHaggle />} />
           <Route path="orders" element={<MyOrders />} />
           <Route path="battle" element={<Battle />} />
           <Route path="seller" element={<Seller />} />

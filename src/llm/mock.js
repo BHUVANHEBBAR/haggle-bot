@@ -90,8 +90,17 @@ function copilotStep(m) {
   return final(`Here is what PayPal returned: ${JSON.stringify(last.result).slice(0, 200)}`);
 }
 
+// Offline stand-in for the optional AI injection check: wording the code patterns in guardrails.js do not cover.
+const SOFT_MANIPULATION = [
+  /\bas (the |an? |your )?(shop )?(owner|manager|admin|administrator|developer|boss)\b/i,
+  /\b(override|bypass)\b/i, /\bforget (everything|all|what|your)\b/i, /\bnew (rules|instructions)\b/i,
+  /\b(repeat|print|output|dump|show) (your|the) (prompt|instructions|rules|config)/i,
+  /\b(hidden|secret|internal) (rules?|prices?|limits?|numbers?)\b/i, /\bauthori[sz]e[sd]? you to\b/i,
+];
+
 async function complete({ meta }) {
   if (!meta) return JSON.stringify({ message: 'Hello!' });
+  if (meta.task === 'injection_check') return JSON.stringify({ manipulation: SOFT_MANIPULATION.some((re) => re.test(String(meta.text || ''))) });
   if (meta.task === 'seller') return JSON.stringify(sellerReply(meta));
   if (meta.task === 'copilot') return JSON.stringify(copilotStep(meta));
   if (meta.task === 'buyer') return JSON.stringify(buyerReply(meta));

@@ -165,3 +165,20 @@ test('invoice client: creates the draft with an idempotency key, sends it, and r
   assert.equal(odd.items[0].quantity, '1');
   assert.equal(odd.items[0].unit_amount.value, '78.01');
 });
+
+test('addTracking posts to /v2/checkout/orders/{id}/track with the fields PayPal documents, and an idempotency key', async () => {
+  handler = (url) => url.endsWith('/v1/oauth2/token') ? tokenReply : { status: 201, body: { id: 'ORD7', status: 'COMPLETED' }, headers: { 'paypal-debug-id': 'dbg-track' } };
+  const r = await paypal.addTracking({ orderId: 'ORD7', captureId: 'CAP7', trackingNumber: 'LC-99887', carrier: 'OTHER', carrierOther: 'Local Courier Co', notifyPayer: true, dealId: 'deal7' });
+  assert.equal(r.ok, true);
+  assert.equal(r.debugId, 'dbg-track');
+  const c = calls.find((x) => x.url.endsWith('/v2/checkout/orders/ORD7/track'));
+  assert.equal(c.opts.method, 'POST');
+  assert.equal(c.opts.headers['paypal-request-id'], 'deal7:track:LC-99887');
+  assert.deepEqual(JSON.parse(c.opts.body), { capture_id: 'CAP7', tracking_number: 'LC-99887', carrier: 'OTHER', notify_payer: true, carrier_name_other: 'Local Courier Co' });
+  // a named carrier sends no carrier_name_other
+  await paypal.addTracking({ orderId: 'ORD7', captureId: 'CAP7', trackingNumber: '1Z999AA10123456784', carrier: 'UPS', carrierOther: 'ignored', dealId: 'deal7' });
+  const last = JSON.parse(calls.filter((x) => x.url.endsWith('/track')).at(-1).opts.body);
+  assert.equal(last.carrier, 'UPS');
+  assert.ok(!('carrier_name_other' in last));
+  assert.equal(last.notify_payer, false);
+});

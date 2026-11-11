@@ -13,6 +13,7 @@ const stepTitle = (t: TrailStep): string => ({
   captured: t.by === 'seller' ? 'Payment captured by you' : 'Payment captured',
   refunded: 'Payment refunded',
   voided: 'Hold released',
+  tracking_added: `Tracking added (${t.carrier ?? ''} ${t.trackingNumber ?? ''}) ${t.sentToPayPal ? 'and sent to PayPal' : 'on your side only: invoice payments have no PayPal order to attach it to'}`,
   invoice_sent: 'PayPal invoice sent to the buyer',
   invoice_paid: 'Buyer paid the PayPal invoice',
   invoice_cancelled: `PayPal invoice ${t.invoiceStatus ?? 'cancelled'}`,

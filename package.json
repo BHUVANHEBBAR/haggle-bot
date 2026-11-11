@@ -11,6 +11,7 @@
     "dev": "node --watch src/server.js",
     "test": "node --test test/*.test.js",
     "eval": "node scripts/eval.js",
-    "voice": "node scripts/voice-check.js"
+    "voice": "node scripts/voice-check.js",
+    "judge": "node scripts/persona-judge.js"
   }
 }

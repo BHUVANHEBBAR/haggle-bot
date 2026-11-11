@@ -125,6 +125,18 @@ async function refundCapture(captureId, dealId, note) {
   return { refundId: r.id, status: r.status, debugId: r._debugId };
 }
 
+/**
+ * POST /v2/checkout/orders/{id}/track: "Adds tracking information for an Order".
+ * Body (from PayPal's Orders v2 spec): capture_id, tracking_number and carrier are required;
+ * carrier_name_other only when carrier is OTHER; notify_payer is optional (default false). Replies 200/201 with the order.
+ */
+async function addTracking({ orderId, captureId, trackingNumber, carrier, carrierOther, notifyPayer = false, dealId }) {
+  const body = { capture_id: captureId, tracking_number: trackingNumber, carrier, notify_payer: !!notifyPayer };
+  if (carrier === 'OTHER' && carrierOther) body.carrier_name_other = carrierOther;
+  const r = await request('POST', `/v2/checkout/orders/${encodeURIComponent(orderId)}/track`, { body, requestId: `${dealId}:track:${trackingNumber}` });
+  return { ok: true, debugId: r._debugId };
+}
+
 // ---------- read APIs: PayPal is the source of truth for what was actually paid ----------
 const cents = (a) => (a && a.value != null ? toCents(a.value) : null);
 const pick = (c) => ({ id: c.id, status: c.status, amountCents: cents(c.amount), currency: c.amount?.currency_code || null });
@@ -248,7 +260,7 @@ async function verifyWebhook(headers, rawBody) {
 
 module.exports = {
   mode: 'sandbox', PayPalError, createOrder, captureOrder, authorizeOrder, captureAuthorization,
-  voidAuthorization, refundCapture, verifyWebhook, getAccessToken,
+  voidAuthorization, refundCapture, addTracking, verifyWebhook, getAccessToken,
   getOrder, getCapture, getAuthorization, getRefund, listTransactions, getBalances, listDisputes, getDispute,
   issueInvoice, getInvoice, cancelInvoice,
 };

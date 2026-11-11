@@ -52,7 +52,7 @@ The app talks only to `api-m.sandbox.paypal.com` and **refuses to start** with a
 ## 5. Verify the claims
 
 ```bash
-npm test         # 160 tests, no dependencies (node:test)
+npm test         # 179 tests, no dependencies (node:test)
 npm run eval     # 500 hostile negotiations: expect "PASS: 0 violations"
 npm run voice    # optional, needs a live AI key: prints each personality's replies
 ```
@@ -68,7 +68,7 @@ npm run voice    # optional, needs a live AI key: prints each personality's repl
 | Webhook signature check | Simulated events through the real verification code | Real PayPal webhooks (needs a public URL) |
 | Reconcile / money trail | Against the simulated PayPal | Against PayPal by capture ID |
 | Invoicing | Simulated | Create / send / cancel verified live; a buyer paying an invoice was **not** verified live |
-| PayPal remote MCP server | Not used | Connects and lists 46 tools; tool execution failed on PayPal's side during testing, so the app uses REST and labels which transport served each call |
+| PayPal remote MCP server | Not used | Connects and lists 46 tools. Tool execution failed on PayPal's side earlier in the build; on Nov 11, 2026 two read-only tools (`list_disputes`, `list_transactions`) ran over MCP. The app falls back to REST if MCP stops executing and labels which transport served each call |
 | AI wording | Offline scripted brain | Gemini, Groq or any OpenAI-compatible model, with automatic fallback |
 | Money | None | Sandbox money only |
 

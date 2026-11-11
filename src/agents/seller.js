@@ -10,6 +10,7 @@ const llm = require('../llm');
 const store = require('../store');
 const { usd } = require('../money');
 const personas = require('../personas');
+const injectionAi = require('../injection-ai');
 
 // the rules come first and are the same for every personality; the personality only adds a voice paragraph at the end
 const SYSTEM = (persona) => `You are the sales assistant of a small independent shop. You negotiate the price of ONE product with a buyer.
@@ -62,8 +63,11 @@ async function respond(session, buyerTextRaw) {
   const persona = session.persona || product.persona || personas.DEFAULT;
   const progress = personas.progressFor(persona);
 
-  const injection = g.detectInjection(buyerText);
-  if (injection) store.logEvent('injection_blocked', { productId: product.id, text: buyerText.slice(0, 120) });
+  let injection = g.detectInjection(buyerText);
+  // optional second opinion: it can only add a flag when the code found none, never clear one
+  let injectionByAi = false;
+  if (!injection) { const second = await injectionAi.check(buyerText); if (second.flagged) { injection = true; injectionByAi = true; } }
+  if (injection) store.logEvent('injection_blocked', { productId: product.id, text: buyerText.slice(0, 120), by: injectionByAi ? 'ai' : 'code' });
 
   // numbers inside a manipulation attempt are not treated as real offers
   const offerCents = injection ? null : g.extractOffer(buyerText, startAsk);
@@ -108,7 +112,7 @@ async function respond(session, buyerTextRaw) {
 
   // ---- update the session
   session.history.push({ role: 'buyer', text: buyerText });
-  session.history.push({ role: 'seller', text: message, meta: { action: finalDecision.action, guard: { clamped: enforced.clamped, injection, belowFloor: !!decision.belowFloor, messageReplaced, provider: out.provider, fellBack: out.fellBack } } });
+  session.history.push({ role: 'seller', text: message, meta: { action: finalDecision.action, guard: { clamped: enforced.clamped, injection, injectionByAi, belowFloor: !!decision.belowFloor, messageReplaced, provider: out.provider, fellBack: out.fellBack } } });
   session.messages += 2;
   if (finalDecision.action === 'counter' || finalDecision.action === 'chat') session.askCents = finalDecision.priceCents;
   if (finalDecision.action === 'walk_away') session.status = 'ended';
@@ -139,7 +143,7 @@ async function respond(session, buyerTextRaw) {
     status: session.status,
     deal: deal ? { id: deal.id, unitCents: deal.unitCents, totalCents: deal.totalCents, expiresAt: deal.expiresAt, qty } : null,
     guard: {
-      clamped: enforced.clamped, injection, belowFloor: !!decision.belowFloor,
+      clamped: enforced.clamped, injection, injectionByAi, belowFloor: !!decision.belowFloor,
       messageReplaced, provider: out.provider, fellBack: out.fellBack,
     },
   };

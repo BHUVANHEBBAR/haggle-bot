@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { ui, HOME_PATH, BASE, SELLER_KEY, SHOTS, playwright, startServer, MOCK, say, openChat, negotiateToDeal, payApprove, login, openTab } = require('./lib');
 
-const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z1,z2,z3,z4,z5,z6').split(',');
+const only = (process.env.E2E_FLOWS || 'a,b,c,d,e,f,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z1,z2,z3,z4,z5,z6,z7,z8').split(',');
 const results = [];
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -623,6 +623,54 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
     expect(firm > friendly && friendly > generous, 'first counters: firm ' + firm + ' > friendly ' + friendly + ' > generous ' + generous);
     expect(Math.min(firm, friendly, generous) >= 36, 'every counter stays at or above the $36.00 floor');
     return 'first counters firm $' + firm + ', friendly $' + friendly + ', generous $' + generous + '; floor held';
+  });
+
+  await flow('z7', 'Shipment tracking: the seller adds a tracking number to a paid order; the buyer sees it and the steps finish; the money trail records it', async () => {
+    const page = await newPage();
+    await putProduct('tote', { stock: 20 });
+    await page.goto(ui('/')); await page.locator('.pcard', { hasText: 'Tote' }).getByRole('button', { name: 'Buy now' }).click();
+    await page.waitForSelector('#pay');
+    await payApprove(page);
+    const id = await dealIdFrom(page);
+    expect(id, 'order reference found');
+    const dp = await newPage(); await login(dp); await dp.waitForSelector('#dash:not([hidden])'); await openTab(dp, 'Deals');
+    await dp.locator('#dealsGrid .ag-row', { hasText: 'captured' }).first().getByRole('button', { name: 'Add tracking' }).click();
+    await dp.getByLabel('Carrier', { exact: true }).selectOption('UPS');
+    await dp.getByLabel(/Tracking number for/).fill('1Z999AA10123456784');
+    await dp.getByRole('button', { name: 'Save tracking' }).click();
+    await dp.waitForTimeout(800);
+    const mine = (await dash()).deals.find((x) => x.shipment && x.shipment.trackingNumber === '1Z999AA10123456784');
+    expect(mine, 'the dashboard shows a deal with the tracking number');
+    expect(mine.trail.some((t) => t.step === 'tracking_added' && t.sentToPayPal === true), 'the money trail records tracking sent to PayPal');
+    await page.goto(ui('/order/' + mine.id));
+    await page.waitForSelector('#shipment');
+    const box = await page.locator('#shipment').innerText();
+    expect(/UPS/.test(box) && /1Z999AA10123456784/.test(box), 'the buyer sees carrier and number');
+    const steps = page.getByRole('list', { name: 'Order progress' }).locator('li');
+    expect(/Shipped/.test(await steps.nth(2).innerText()) && /done/.test(await steps.nth(2).innerText()), 'the last step reads Shipped and is done');
+    await shot(page, 'z7-shipped');
+    return 'tracking added by the seller, visible to the buyer, recorded in the trail';
+  });
+
+  await flow('z8', 'Auto-haggle: the buyer sets a maximum, their agent haggles, a deal within the maximum can be paid; a too-low maximum ends with no deal', async () => {
+    const page = await newPage();
+    await page.goto(ui('/auto'));
+    await page.waitForSelector('#autoProduct option', { state: 'attached' });
+    await page.selectOption('#autoProduct', 'tote');
+    await page.fill('#autoMax', '46');
+    await page.click('#autoGo');
+    await page.waitForSelector('#autoLog li', { timeout: 20000 });
+    const res = await page.locator('#autoResult').innerText();
+    expect(/within your \$46\.00 maximum/.test(res), `deal within the maximum (saw: ${res.slice(0, 120)})`);
+    const m = res.match(/Deal reached at \$(\d+\.\d\d)/);
+    expect(m && Number(m[1]) <= 46, 'the agreed price is not above the maximum');
+    expect(await page.locator('#pay').count() === 1, 'the pay button is offered');
+    await shot(page, 'z8-auto-deal');
+    await page.fill('#autoMax', '10');
+    await page.click('#autoGo');
+    await page.waitForFunction(() => /No deal/.test(document.querySelector('#autoResult')?.textContent || ''), null, { timeout: 20000 });
+    expect(await page.locator('#pay').count() === 0, 'no pay button when there is no deal');
+    return `deal at $${m[1]} within the $46 maximum; $10 maximum gave no deal`;
   });
 
   await flow('g','Real AI (E2E_PROVIDER, default gemini): UI says "answered by <provider>"', async () => {

@@ -25,6 +25,7 @@ export interface PublicDeal {
   id: string; productId: string; source: 'negotiated' | 'buy_now'; productName: string; qty: number; unitCents: number; totalCents: number; listTotalCents: number;
   currency: string; status: DealStatus; payMode: 'full' | 'authorize'; expiresAt: string; lastError: string | null; pending?: boolean;
   invoice?: { status: string; url: string | null; number: string | null } | null;
+  shipment?: { carrier: string; trackingNumber: string; at: string } | null;
 }
 export interface AiStatus { provider: string; fellBack: boolean; error: string | null; model?: string | null; paused?: string[]; at: string }
 export interface Health { ok: boolean; ai: string; aiStatus: AiStatus | null; paypal: 'sandbox' | 'simulated'; sellerKeyIsDefault: boolean }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef } from 'ag-grid-community';
+import { useQuery } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/client';
@@ -25,6 +26,22 @@ export default function DealsGrid({ deals, sellerKey, onChanged }: { deals: Sell
   const [viewing, setViewing] = useState<SellerDeal | null>(null);
   const [invoicing, setInvoicing] = useState<SellerDeal | null>(null);
   const [email, setEmail] = useState('');
+  const [shipping, setShipping] = useState<SellerDeal | null>(null);
+  const [carrier, setCarrier] = useState('USPS');
+  const [carrierName, setCarrierName] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [notify, setNotify] = useState(false);
+  const { data: carriers } = useQuery({ queryKey: ['carriers', sellerKey], enabled: !!shipping, staleTime: Infinity,
+    queryFn: () => api<{ carriers: { code: string; name: string }[] }>('/api/seller/carriers', { headers: headers(sellerKey) }).then((r) => r.carriers) });
+
+  async function sendTracking() {
+    if (!shipping) return;
+    try {
+      await api(`/api/seller/deals/${shipping.id}/tracking`, { method: 'POST', headers: headers(sellerKey), body: { carrier, carrierName, trackingNumber, notifyBuyer: notify } });
+      toast.success(shipping.invoiceId ? 'Tracking saved' : 'Tracking sent to PayPal');
+      setShipping(null); setTrackingNumber(''); setCarrierName(''); onChanged();
+    } catch (e) { toast.error((e as Error).message); }
+  }
 
   async function sendInvoice() {
     if (!invoicing) return;
@@ -58,6 +75,8 @@ export default function DealsGrid({ deals, sellerKey, onChanged }: { deals: Sell
             <Button className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => void act(x.id, 'capture')}>Accept job (capture)</Button>
             <Button variant="ghost" className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => void act(x.id, 'void')}>Decline (release hold)</Button>
           </>}
+          {x.status === 'captured' && x.physical && !x.shipment && <Button className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => { setTrackingNumber(''); setCarrierName(''); setShipping(x); }}>Add tracking</Button>}
+          {x.status === 'captured' && x.shipment && <span className="whitespace-nowrap text-[13px] font-semibold text-ok">Shipped: {x.shipment.carrier} {x.shipment.trackingNumber}</span>}
           {x.status === 'captured' && <Button variant="ghost" className="min-h-[34px] px-3 py-1.5 text-[13px]" onClick={() => void act(x.id, 'refund')}>Refund</Button>}
           {(x.status === 'agreed' || x.status === 'expired') && <Button variant="ghost" className="min-h-[34px] whitespace-nowrap px-3 py-1.5 text-[13px]" onClick={() => { setEmail(''); setInvoicing(x); }}>Send PayPal invoice</Button>}
           {x.status === 'invoiced' && <>
@@ -107,6 +126,32 @@ export default function DealsGrid({ deals, sellerKey, onChanged }: { deals: Sell
           </div>
           <Button type="submit">Send invoice</Button>
           <Button type="button" variant="ghost" onClick={() => setInvoicing(null)}>Cancel</Button>
+        </form>
+      )}
+      {shipping && (
+        <form className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-line bg-card p-3" aria-label="Add shipment tracking"
+          onSubmit={(e) => { e.preventDefault(); void sendTracking(); }}>
+          <div>
+            <label htmlFor="trkCarrier" className="block text-[13px] font-bold">Carrier</label>
+            <select id="trkCarrier" value={carrier} onChange={(e) => setCarrier(e.target.value)} className="mt-1 min-h-11 rounded-xl border border-line bg-card px-3 py-2.5">
+              {(carriers ?? [{ code: 'USPS', name: 'USPS' }, { code: 'UPS', name: 'UPS' }, { code: 'FEDEX', name: 'FedEx' }, { code: 'DHL', name: 'DHL' }, { code: 'OTHER', name: 'Other carrier' }]).map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+          </div>
+          {carrier === 'OTHER' && (
+            <div>
+              <label htmlFor="trkName" className="block text-[13px] font-bold">Carrier name</label>
+              <input id="trkName" required value={carrierName} onChange={(e) => setCarrierName(e.target.value)} maxLength={64} className="mt-1 min-h-11 rounded-xl border border-line bg-card px-3 py-2.5" />
+            </div>
+          )}
+          <div className="min-w-[220px] flex-1">
+            <label htmlFor="trkNumber" className="block text-[13px] font-bold">Tracking number for {shipping.productName}</label>
+            <input id="trkNumber" required autoFocus value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} maxLength={64} placeholder="1Z999AA10123456784"
+              className="num mt-1 min-h-11 w-full rounded-xl border border-line bg-card px-3 py-2.5" />
+            <label className="mt-1 flex items-center gap-2 text-xs text-mute"><input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Let PayPal email the buyer the tracking</label>
+            {shipping.invoiceId && <div className="mt-1 text-xs text-mute">This was paid through an invoice, so the tracking is kept here and not sent to PayPal.</div>}
+          </div>
+          <Button type="submit">Save tracking</Button>
+          <Button type="button" variant="ghost" onClick={() => setShipping(null)}>Cancel</Button>
         </form>
       )}
       {narrow ? (

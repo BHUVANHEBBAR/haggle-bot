@@ -105,6 +105,16 @@ async function refundCapture(captureId, dealId) {
   return { refundId, status: 'COMPLETED', debugId: 'mock' };
 }
 
+const trackers = new Map(); // capture id -> { orderId, trackingNumber, carrier }
+// Mirrors POST /v2/checkout/orders/{id}/track: the order and the capture must exist and belong together; the same tracking number is idempotent.
+async function addTracking({ orderId, captureId, trackingNumber, carrier, carrierOther }) {
+  const c = captures.get(captureId);
+  if (!orders.get(orderId) || !c || c.orderId !== orderId) throw new PayPalError(404, { name: 'RESOURCE_NOT_FOUND', details: [{ issue: 'INVALID_RESOURCE_ID' }] });
+  trackers.set(captureId, { orderId, trackingNumber, carrier, carrierOther: carrierOther || null });
+  return { ok: true, debugId: 'mock' };
+}
+const trackerInfo = (captureId) => trackers.get(captureId) || null;
+
 async function verifyWebhook(headers, rawBody) {
   const id = headers['paypal-transmission-id'], time = headers['paypal-transmission-time'], sig = headers['paypal-transmission-sig'];
   if (!id || !time || !sig) return false;
@@ -184,7 +194,7 @@ function signForTest(rawBody) {
 
 module.exports = {
   mode: 'simulated', PayPalError, createOrder, captureOrder, authorizeOrder, captureAuthorization,
-  voidAuthorization, refundCapture, verifyWebhook, approve, orderInfo, setWebhookSink, signForTest,
+  voidAuthorization, refundCapture, addTracking, trackerInfo, verifyWebhook, approve, orderInfo, setWebhookSink, signForTest,
   getOrder, getCapture, getAuthorization, getRefund, listTransactions, getBalances, listDisputes, getDispute,
   issueInvoice, getInvoice, cancelInvoice, payInvoice, invoiceInfo,
 };

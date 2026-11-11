@@ -145,6 +145,41 @@ async function sellerRefund(dealId) {
   return deal;
 }
 
+// ---- Shipment tracking: after a physical item is paid, the seller adds a tracking number; PayPal gets it through the Orders v2 "track" call.
+// Carrier codes are a short subset of PayPal's own shipment_carrier list (checked against the Orders v2 spec); OTHER takes a free name.
+const CARRIERS = { USPS: 'USPS', UPS: 'UPS', FEDEX: 'FedEx', DHL: 'DHL', ROYAL_MAIL: 'Royal Mail', INDIA_POST: 'India Post', BLUEDART: 'Blue Dart', OTHER: 'Other carrier' };
+const TRACKING_NO = /^[A-Za-z0-9][A-Za-z0-9 _-]{3,63}$/;
+const CARRIER_NAME = /^[A-Za-z0-9][A-Za-z0-9 .&'-]{1,63}$/;
+
+async function sellerShip(dealId, { carrier, trackingNumber, carrierName, notifyBuyer } = {}) {
+  const deal = liveDeal(dealId);
+  const product = store.getProduct(deal.productId);
+  if (!product?.physical) throw new UserError('Only physical items are shipped; this one has nothing to track.', 409);
+  if (deal.status !== 'captured' || !deal.captureId) throw new UserError('Add tracking after the payment is captured.', 409);
+  if (!Object.hasOwn(CARRIERS, String(carrier))) throw new UserError('Choose a carrier from the list.', 400);
+  const number = String(trackingNumber || '').trim();
+  if (!TRACKING_NO.test(number)) throw new UserError('Enter the tracking number (4 to 64 letters, numbers, spaces, dashes).', 400);
+  const other = carrier === 'OTHER' ? String(carrierName || '').trim() : '';
+  if (carrier === 'OTHER' && !CARRIER_NAME.test(other)) throw new UserError('Name the carrier (2 to 64 characters).', 400);
+  let sentToPayPal = false;
+  // an invoice payment has no checkout order, so there is nothing to attach tracking to at PayPal: keep it on our side and say so
+  if (deal.paypalOrderId) {
+    try {
+      const t = await client().addTracking({ orderId: deal.paypalOrderId, captureId: deal.captureId, trackingNumber: number, carrier, carrierOther: other, notifyPayer: !!notifyBuyer, dealId: deal.id });
+      sentToPayPal = true;
+      store.addTrail(deal, 'tracking_added', { captureId: deal.captureId, carrier, trackingNumber: number, sentToPayPal, by: 'seller', debugId: t.debugId });
+    } catch (err) {
+      store.logEvent('paypal_error', { op: 'tracking', issue: err.issue, debugId: err.debugId });
+      throw new UserError(`PayPal did not accept the tracking number (${err.issue || 'error'}).`, 502);
+    }
+  } else {
+    store.addTrail(deal, 'tracking_added', { captureId: deal.captureId, carrier, trackingNumber: number, sentToPayPal, by: 'seller' });
+  }
+  store.updateDeal(deal, { shipment: { carrier, carrierName: carrier === 'OTHER' ? other : CARRIERS[carrier], trackingNumber: number, sentToPayPal, at: new Date().toISOString() } });
+  store.logEvent('tracking_added', { dealId: deal.id, carrier, sentToPayPal });
+  return deal;
+}
+
 // ---- PayPal Invoicing: the seller invoices an agreed (or expired) deal; the buyer pays on PayPal's invoice page.
 const EMAIL = /^[^\s@<>"']{1,64}@[^\s@<>"']{1,190}\.[A-Za-z]{2,}$/;
 
@@ -248,4 +283,4 @@ async function handleWebhook(headers, rawBody) {
 
 mock.setWebhookSink((h, b) => handleWebhook(h, b));
 
-module.exports = { startCheckout, completeReturn, sellerCapture, sellerVoid, sellerRefund, sellerInvoice, sellerCancelInvoice, syncInvoice, handleWebhook, UserError, mode, client };
+module.exports = { startCheckout, completeReturn, sellerCapture, sellerVoid, sellerRefund, sellerShip, CARRIERS, sellerInvoice, sellerCancelInvoice, syncInvoice, handleWebhook, UserError, mode, client };

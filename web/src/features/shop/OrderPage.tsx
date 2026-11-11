@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle2, Clock, PackageCheck, Printer, RotateCcw, ShoppingBag } from 'lucide-react';
+import { CheckCircle2, Clock, PackageCheck, Printer, RotateCcw, ShoppingBag, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/client';
 import type { Product, PublicDeal } from '../../api/types';
@@ -56,8 +56,9 @@ export default function OrderPage() {
       <p className="mb-4 mt-0 text-mute">{sub}</p>
       {['agreed', 'order_created', 'authorized', 'captured', 'invoiced'].includes(d.status) && (() => {
         // done steps are filled; "current" is what is happening now: paying, or (after payment) the seller's turn
-        const at = paid ? 2 : 1;
-        const steps = ['Price agreed', held ? 'Payment on hold' : invoiced ? 'Invoice sent' : pending ? 'PayPal confirming' : 'Pay with PayPal', product?.physical ? 'Seller ships' : 'Work starts'];
+        const shipped = paid && !!d.shipment;
+        const at = shipped ? 3 : paid ? 2 : 1;
+        const steps = ['Price agreed', held ? 'Payment on hold' : invoiced ? 'Invoice sent' : pending ? 'PayPal confirming' : 'Pay with PayPal', product?.physical ? (shipped ? 'Shipped' : 'Seller ships') : 'Work starts'];
         return (
           <ol aria-label="Order progress" className="no-print mb-4 grid list-none grid-cols-3 gap-2 p-0">
             {steps.map((s, i) => (
@@ -83,6 +84,17 @@ export default function OrderPage() {
           </div>
         </div>
       </Card>
+
+      {d.shipment && (
+        <Card className="mb-4" >
+          <div id="shipment" className="flex items-start gap-3">
+            <Truck className="mt-0.5 shrink-0 text-ok" size={22} aria-hidden />
+            <div><h2 className="m-0 text-base font-semibold">On its way</h2>
+              <div className="mt-1 text-sm">Shipped with <strong>{d.shipment.carrier}</strong>. Tracking number: <span className="num font-bold">{d.shipment.trackingNumber}</span></div>
+              <div className="mt-1 text-xs text-mute">Added by the seller {new Date(d.shipment.at).toLocaleDateString()}. Sandbox store: nothing is really shipped.</div></div>
+          </div>
+        </Card>
+      )}
 
       {live && <div id="dealBox"><DealCard productName={d.productName} shipping={product?.shipping}
         deal={{ id: d.id, unitCents: d.unitCents, totalCents: d.totalCents, listTotalCents: d.listTotalCents, qty: d.qty, expiresAt: d.expiresAt, payMode: d.payMode }}

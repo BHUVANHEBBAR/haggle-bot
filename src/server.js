@@ -90,6 +90,7 @@ const publicDeal = (d) => ({
   listTotalCents: d.listTotalCents, currency: d.currency, status: d.status, payMode: d.payMode,
   expiresAt: d.expiresAt, lastError: d.lastError || null, pending: !!d.pending,
   invoice: d.invoice ? { status: d.invoice.status, url: d.invoice.url || null, number: d.invoice.number || null } : null,
+  shipment: d.shipment ? { carrier: d.shipment.carrierName, trackingNumber: d.shipment.trackingNumber, at: d.shipment.at } : null,
 });
 const sellerProduct = (p) => ({ ...p, floorCents: g.effectiveFloorCents(p, 1) });
 
@@ -345,23 +346,56 @@ route('POST', '/api/battle', async (req, m, url, res) => {
 
   res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
   const out = (o) => res.write(JSON.stringify(o) + '\n');
+  const { status, deal } = await negotiate({ product, who, budgetCents, emit: out });
+  out({ type: 'end', status, deal, budgetCents });
+  res.end();
+  return { handled: true };
+});
+
+/** A buyer agent negotiates with the real seller agent. Both sides run through the same guardrails as a human chat. */
+async function negotiate({ product, who, budgetCents, emit = () => {} }) {
   const s = store.createSession(product.id, 1);
   s.askCents = product.listCents;
   const opening = `Hi! The ${product.name} is ${usd(product.listCents)}. Make me an offer.`;
   s.history.push({ role: 'seller', text: opening });
-  out({ type: 'start', persona: who, budgetCents, product: publicProduct(product), opening });
-
+  emit({ type: 'start', persona: who, budgetCents, product: publicProduct(product), opening });
   let final = null;
   for (let turn = 1; turn <= 9 && s.status === 'open'; turn++) {
     const b = await buyer.turn({ persona: who, product, budgetCents, round: turn, askCents: s.askCents, history: s.history });
-    out({ type: 'buyer', text: b.text, provider: b.provider });
+    emit({ type: 'buyer', text: b.text, provider: b.provider });
     const r = await seller.respond(s, b.text);
-    out({ type: 'seller', text: r.message, action: r.action, priceCents: r.priceCents, guard: r.guard, round: r.round });
+    emit({ type: 'seller', text: r.message, action: r.action, priceCents: r.priceCents, guard: r.guard, round: r.round });
     if (r.deal) final = r.deal;
   }
-  out({ type: 'end', status: s.status, deal: final, budgetCents });
-  res.end();
-  return { handled: true };
+  return { status: s.status, deal: final, opening };
+}
+
+// ---------- auto-haggle: a buyer lets their AI haggle for them, with a hard maximum they set ----------
+// The agent is the same buyer agent as the demo (never the manipulator). The maximum is enforced here in code too: whatever the
+// agent says, a deal above the buyer's maximum is thrown away, and the buyer then pays from the normal order page.
+route('POST', '/api/auto-haggle', async (req) => {
+  rateLimit(req, 'autohaggle', 5);
+  const b = await readJson(req);
+  const product = store.getProduct(String(b.productId || ''));
+  if (!product) throw new HttpError(404, 'Unknown product');
+  if (product.stock < 1) throw new HttpError(409, 'Sold out');
+  const maxCents = Math.round(Number(b.maxDollars) * 100);
+  if (!Number.isFinite(maxCents) || maxCents < 100) throw new HttpError(400, 'Enter the highest price you would pay, in dollars.');
+  if (maxCents > product.listCents) throw new HttpError(400, `That is above the list price (${usd(product.listCents)}). You can just buy it at list price.`);
+  const who = b.style === 'tough' ? 'tough' : 'fair';
+  const transcript = [];
+  const { status, deal } = await negotiate({ product, who, budgetCents: maxCents, emit: (e) => {
+    if (e.type === 'buyer') transcript.push({ role: 'agent', text: e.text });
+    if (e.type === 'seller') transcript.push({ role: 'seller', text: e.text, action: e.action, priceCents: e.priceCents });
+  } });
+  let kept = deal;
+  if (deal && deal.unitCents > maxCents) { // cannot happen while the buyer agent clamps its offers; this is the second lock
+    store.logEvent('autohaggle_over_budget', { productId: product.id, unitCents: deal.unitCents, maxCents });
+    const d = store.getDeal(deal.id); if (d) store.updateDeal(d, { status: 'expired' });
+    kept = null;
+  }
+  store.logEvent('autohaggle', { productId: product.id, maxCents, style: who, result: kept ? 'deal' : 'no_deal', unitCents: kept?.unitCents });
+  return { status: 200, body: { status, maxCents, transcript, deal: kept ? { ...kept, listTotalCents: product.listCents * kept.qty, payMode: product.payMode } : null } };
 });
 
 // ---------- seller area ----------
@@ -370,7 +404,7 @@ route('GET', '/api/seller/dashboard', async (req) => {
   return { status: 200, body: {
     stats: store.stats(), mode: { ai: llm.activeProvider(), paypal: payments.mode() },
     products: store.state.products.map(sellerProduct),
-    deals: store.state.deals.slice(0, 50).map((d) => ({ ...publicDeal(d), floorTotalCents: d.floorTotalCents, costTotalCents: d.costTotalCents, createdAt: d.createdAt, captureId: d.captureId, authorizationId: d.authorizationId, paypalOrderId: d.paypalOrderId, invoiceId: d.invoice?.id || null, invoiceEmail: d.invoice?.email || null, trail: d.trail || [], messages: d.messages, transcript: (d.transcript || []).map((t) => ({ role: t.role, text: t.text })) })),
+    deals: store.state.deals.slice(0, 50).map((d) => ({ ...publicDeal(d), floorTotalCents: d.floorTotalCents, costTotalCents: d.costTotalCents, createdAt: d.createdAt, captureId: d.captureId, authorizationId: d.authorizationId, paypalOrderId: d.paypalOrderId, invoiceId: d.invoice?.id || null, invoiceEmail: d.invoice?.email || null, physical: !!store.getProduct(d.productId)?.physical, shipmentOnPayPal: d.shipment ? !!d.shipment.sentToPayPal : null, trail: d.trail || [], messages: d.messages, transcript: (d.transcript || []).map((t) => ({ role: t.role, text: t.text })) })),
     events: store.state.events.slice(0, 60),
   } };
 });
@@ -412,6 +446,12 @@ route('POST', '/api/seller/deals/([a-f0-9]+)/invoice', async (req, m) => {
   const b = await readJson(req);
   return sellerDealAction((id) => payments.sellerInvoice(id, { email: b.email, name: b.name }))(req, m);
 });
+route('POST', '/api/seller/deals/([a-f0-9]+)/tracking', async (req, m) => {
+  requireSeller(req); rateLimit(req, 'tracking', 20);
+  const b = await readJson(req);
+  return sellerDealAction((id) => payments.sellerShip(id, { carrier: b.carrier, trackingNumber: b.trackingNumber, carrierName: b.carrierName, notifyBuyer: b.notifyBuyer === true }))(req, m);
+});
+route('GET', '/api/seller/carriers', async (req) => { requireSeller(req); return { status: 200, body: { carriers: Object.entries(payments.CARRIERS).map(([code, name]) => ({ code, name })) } }; });
 route('POST', '/api/seller/deals/([a-f0-9]+)/invoice/refresh', sellerDealAction((id) => payments.syncInvoice(id)));
 route('POST', '/api/seller/deals/([a-f0-9]+)/invoice/cancel', sellerDealAction((id) => payments.sellerCancelInvoice(id)));
 

@@ -81,6 +81,7 @@ function ShopHeader({ onSignIn }: { onSignIn: () => void }) {
       <Brand />
       <nav id="main-nav" aria-label="Main" className={cn('order-3 w-full flex-wrap items-center gap-1 sm:order-none sm:flex sm:w-auto sm:flex-1', menu ? 'flex' : 'hidden')}>
         <NavLink to="/" end className={link}>Shop</NavLink>
+        <NavLink to="/auto" className={link}>Auto-haggle</NavLink>
         <NavLink to="/orders" className={link}>My orders</NavLink>
         <details className="group relative">
           <summary className="cursor-pointer list-none rounded-full px-3 py-2 text-[15px] font-semibold text-navy-mute hover:bg-white/10 hover:text-white">Developers</summary>
