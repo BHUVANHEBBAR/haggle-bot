@@ -4,6 +4,7 @@ You do not need an account, an API key or `npm install`. HaggleBot ships with a 
 
 | I want to... | Do this | Time |
 |---|---|---|
+| Watch it first | [2:38 demo video](https://youtu.be/XS4Rn9yTwzQ) | 3 min |
 | Try it with nothing to set up | [Run locally in demo mode](#1-run-it-locally-no-setup) | 1 min |
 | Try the hosted copy | [Hosted copy](#2-hosted-copy) | 1 min |
 | See it use my own PayPal Sandbox | [Real PayPal Sandbox](#4-optional-use-your-own-paypal-sandbox) | 5 min |
@@ -25,7 +26,9 @@ Seller console password locally: **`change-me`** (it is only a demo default; the
 
 ## 2. Hosted copy
 
-Live demo: **see the link in the Devpost submission** (and the repository's website field). The free host sleeps when idle, so the **first load can take 30-60 seconds**; then it is fast.
+Live demo: **https://haggle-bot.onrender.com/app/** (also linked from the Devpost submission). The free host sleeps when idle, so the **first load can take 30-60 seconds**; then it is fast. The shop and the haggling work without signing in. Press **Seller** in the header for the seller console, which needs the key from the Devpost testing instructions.
+
+The hosted shop keeps its data in memory, so a restart or an idle spin-down clears the deals and orders (this is the free tier, not a bug). Everything you create is Sandbox data.
 
 The hosted copy uses PayPal **Sandbox** credentials and a real AI model. Its seller key is given only in the Devpost "testing instructions" field (it is never stored in this repository). If the hosted copy is slow or asleep, use the local run above: it behaves the same.
 

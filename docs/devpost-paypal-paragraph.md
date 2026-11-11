@@ -1,6 +1,7 @@
 # Devpost text for HaggleBot (every claim below is true of the code and tests as of Nov 11, 2026)
 
-Fields that must be filled by the owner, not guessed: the hosted URL, the YouTube link, the single sponsor prize chosen, and the hosted seller key (which goes ONLY in Devpost's "testing instructions" field, never in the repository).
+Filled in: demo video https://youtu.be/XS4Rn9yTwzQ (2:38), hosted demo https://haggle-bot.onrender.com/app/, repository https://github.com/BHUVANHEBBAR/haggle-bot.
+Still for the owner: the single sponsor prize chosen, and the hosted seller key (which goes ONLY in Devpost's "testing instructions" field, never in the repository).
 
 ## Tagline
 An AI haggles for the seller, plain code guards the lowest price, and PayPal collects the payment.
@@ -47,4 +48,4 @@ HaggleBot was started for this hackathon. The public repository's history was co
 To be chosen by the owner: AG Grid (integrated) or Render (deploy). Do not claim both.
 
 ## Testing instructions (for the Devpost field)
-Fastest: `git clone` the repo, `node src/server.js`, open http://localhost:3000/app/ (no install, no keys; seller password `change-me` locally). Full guide: JUDGES.md. Hosted copy: <hosted URL> (first load can take 30-60 s on the free tier); hosted seller key: <put it here, in the Devpost field only>.
+Fastest: `git clone` the repo, `node src/server.js`, open http://localhost:3000/app/ (no install, no keys; seller password `change-me` locally). Full guide: JUDGES.md. Hosted copy: https://haggle-bot.onrender.com/app/ (first load can take 30-60 s on the free tier; the shop and haggling need no sign-in, the Seller button in the header opens the console). Hosted seller key: <put it here, in the Devpost field only>. The hosted shop keeps its data in memory, so a restart clears deals and orders; everything is Sandbox data. Demo video: https://youtu.be/XS4Rn9yTwzQ

@@ -4,7 +4,7 @@
 
 Built for the **PayPal AI Hackathon** (PayPal Sandbox + AI). Sandbox only: no real money is ever moved.
 
-> **Judges: start with [JUDGES.md](JUDGES.md)** (run it in under 2 minutes, a 3-minute tour, what is real vs simulated). The demo video and the live demo are linked from the Devpost submission.
+> **Judges: start with [JUDGES.md](JUDGES.md)** (run it in under 2 minutes, a 3-minute tour, what is real vs simulated). **Watch the 2:38 demo video: https://youtu.be/XS4Rn9yTwzQ** · **Live demo (PayPal Sandbox): https://haggle-bot.onrender.com/app/** (free host, the first load can take 30-60 seconds; the seller key is in the Devpost testing instructions, not in this repository).
 
 ## Try it in 60 seconds
 
